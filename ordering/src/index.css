@@ -1,0 +1,21 @@
+@import "tailwindcss";
+
+/* 雄泉鮮食設計系統 */
+:root {
+  --color-primary: #16a34a;
+  --color-primary-foreground: #ffffff;
+}
+
+/* Tailwind v4 theme */
+@theme {
+  --color-primary: #16a34a;
+  --color-primary-foreground: #ffffff;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

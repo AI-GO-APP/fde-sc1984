@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* 雄泉鮮食設計系統 */
+:root {
+  --color-primary: #16a34a;
+  --color-primary-foreground: #ffffff;
+}
+
+@theme {
+  --color-primary: #16a34a;
+  --color-primary-foreground: #ffffff;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 列印樣式 */
+@media print {
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

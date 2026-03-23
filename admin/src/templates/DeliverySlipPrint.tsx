@@ -1,0 +1,72 @@
+/**
+ * 出貨配送單 — 列印版面
+ * 不含價格，含勾選欄和簽收欄
+ */
+import type { Order } from '../store/useStore'
+import { customers } from '../data/mockData'
+
+interface Props {
+  orders: Order[]
+}
+
+export default function DeliverySlipPrint({ orders }: Props) {
+  return (
+    <>
+      {orders.map((order, idx) => {
+        const cust = customers.find(c => c.id === order.customerId)
+        return (
+          <div key={order.id} className={idx > 0 ? 'print-page-break' : ''}>
+            <div className="print-header">
+              <h1>雄泉鮮食企業股份有限公司</h1>
+              <p>出 貨 配 送 單</p>
+            </div>
+            <div className="print-meta">
+              <div>
+                <div>配送日期: <strong>{order.date}</strong></div>
+                <div>客戶: <strong>{cust?.ref} {cust?.name}</strong></div>
+                <div>地址: <strong>{cust?.address}</strong></div>
+                <div>電話: {cust?.phone}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div>單號: <strong>{order.id}</strong></div>
+                <div>品項數: {order.lines.length}</div>
+              </div>
+            </div>
+            <table className="print-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '5%' }}>#</th>
+                  <th style={{ width: '35%' }}>品名規格</th>
+                  <th style={{ width: '12%', textAlign: 'right' }}>數量</th>
+                  <th style={{ width: '8%' }}>單位</th>
+                  <th style={{ width: '25%' }}>備註</th>
+                  <th style={{ width: '8%', textAlign: 'center' }}>✓</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.lines.map((line, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td>{line.productName}</td>
+                    <td className="num bold">{line.allocatedQty.toFixed(2)}</td>
+                    <td>{line.unit}</td>
+                    <td>{line.note || ''}</td>
+                    <td style={{ textAlign: 'center' }}><span className="print-checkbox"></span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="print-signature">
+              <div>配送人員:</div>
+              <div>客戶簽收:</div>
+              <div>送達時間:</div>
+            </div>
+            <div className="print-footer">
+              <div>列印時間: {new Date().toLocaleString('zh-TW')}</div>
+            </div>
+          </div>
+        )
+      })}
+    </>
+  )
+}

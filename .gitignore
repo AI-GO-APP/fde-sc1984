@@ -1,0 +1,32 @@
+# 環境變數
+.env
+.env.local
+.env.*.local
+
+# 依賴
+node_modules/
+.venv/
+__pycache__/
+
+# 建置輸出
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite
+*.local
+
+# Lock files (各 app 各自管理)
+# package-lock.json
+
+# Gemini Agent
+.gemini/
+
+# 暫存
+展示/
