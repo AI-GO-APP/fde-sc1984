@@ -11,6 +11,7 @@ interface Props {
   confirmText?: string
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
+  showIrreversibleWarning?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
@@ -20,6 +21,7 @@ export default function ConfirmDialog({
   confirmText = '確認',
   cancelText = '取消',
   variant = 'warning',
+  showIrreversibleWarning = false,
   onConfirm, onCancel,
 }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -54,9 +56,11 @@ export default function ConfirmDialog({
           <span className="text-4xl">{v.icon}</span>
           <h3 className="text-lg font-bold text-gray-900">{title}</h3>
           <p className="text-sm text-gray-500 leading-relaxed">{message}</p>
-          <p className="text-xs text-red-500 font-medium bg-red-50 rounded-lg px-3 py-1.5">
-            ⚠️ 此操作無法復原
-          </p>
+          {showIrreversibleWarning && (
+            <p className="text-xs text-red-500 font-medium bg-red-50 rounded-lg px-3 py-1.5">
+              ⚠️ 此操作無法復原
+            </p>
+          )}
         </div>
         <div className="flex gap-3 mt-5">
           <button

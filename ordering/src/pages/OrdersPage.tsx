@@ -36,7 +36,25 @@ export default function OrdersPage() {
         {ordersLoading && <span className="text-xs text-gray-400 animate-pulse">載入中...</span>}
       </header>
 
-      {!ordersLoading && apiOrders.length === 0 ? (
+      {ordersLoading && apiOrders.length === 0 ? (
+        <div className="px-4 py-4 space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 space-y-3 animate-pulse">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="h-5 bg-gray-200 rounded w-32 mb-1"></div>
+                  <div className="h-4 bg-gray-100 rounded w-24"></div>
+                </div>
+                <div className="h-5 bg-gray-100 rounded-full w-16"></div>
+              </div>
+              <div className="space-y-2 mt-3">
+                <div className="h-4 bg-gray-100 rounded w-full"></div>
+                <div className="h-4 bg-gray-100 rounded w-full"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : apiOrders.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-[60vh] text-gray-400 space-y-3">
           <span className="text-5xl">📋</span>
           <p>還沒有訂單</p>

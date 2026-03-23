@@ -75,35 +75,47 @@ export interface RawSaleOrderLine {
   created_at?: string
 }
 
-// --- Fetch helpers ---
+import { useAuthStore } from '../store/useAuthStore'
 
 /** 通用 proxy fetch — 支援所有 HTTP methods */
 async function fetchProxy<T>(
   endpoint: string,
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
   body?: Record<string, unknown>,
+  retries = 2,
 ): Promise<T> {
   const url = `${API_BASE}/${endpoint}`
+  const token = useAuthStore.getState().token
   const options: RequestInit = {
     method,
     headers: {
       'X-API-Key': API_KEY,
       'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
   }
   if (body && method !== 'GET') {
     options.body = JSON.stringify(body)
   }
-  const res = await fetch(url, options)
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`API error ${res.status}: ${text}`)
+  
+  try {
+    const res = await fetch(url, options)
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`API error ${res.status}: ${text}`)
+    }
+    // DELETE 可能不回傳 body
+    if (res.status === 204 || res.headers.get('content-length') === '0') {
+      return undefined as T
+    }
+    return res.json()
+  } catch (err) {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 1000))
+      return fetchProxy(endpoint, method, body, retries - 1)
+    }
+    throw err
   }
-  // DELETE 可能不回傳 body
-  if (res.status === 204 || res.headers.get('content-length') === '0') {
-    return undefined as T
-  }
-  return res.json()
 }
 
 // --- Product / Category / Customer (READ) ---
@@ -151,12 +163,13 @@ export async function querySaleOrders(
   filters?: Array<{ column: string; op: string; value: unknown }>,
   orderBy?: Array<{ column: string; direction: string }>,
   limit = 100,
+  offset = 0,
 ): Promise<RawSaleOrder[]> {
   return fetchProxy<RawSaleOrder[]>('sale_orders/query', 'POST', {
     filters: filters || [],
     order_by: orderBy || [{ column: 'created_at', direction: 'desc' }],
     limit,
-    offset: 0,
+    offset,
   })
 }
 
@@ -180,6 +193,11 @@ export async function patchSaleOrder(
   return fetchProxy(`sale_orders/${id}`, 'PATCH', data as Record<string, unknown>)
 }
 
+/** 刪除銷貨單 */
+export async function deleteSaleOrder(id: string): Promise<unknown> {
+  return fetchProxy(`sale_orders/${id}`, 'DELETE')
+}
+
 // --- Data mapping to frontend model ---
 
 import type { Product, Category, Customer } from '../data/mockData'
@@ -198,7 +216,7 @@ export function mapProducts(raw: RawProductTemplate[], categories: Category[]): 
     id: p.id,
     name: p.name,
     categoryId: p.categ_id || (categories.length > 0 ? categories[0].id : 'unknown'),
-    unit: 'unit',
+    unit: p.uom_id || '單位',
     defaultCode: p.default_code || '',
     supplierId: '',
   }))

@@ -8,7 +8,8 @@
  * 4. 保留 Admin 端功能（procurement, stock）以免影響
  */
 import { create } from 'zustand'
-import { customers, products as mockProducts, type Customer, type Product, type Category } from '../data/mockData'
+import { type Product, type Category } from '../data/mockData'
+import { useAuthStore } from './useAuthStore'
 import {
   fetchProductTemplates,
   fetchProductCategories,
@@ -18,6 +19,7 @@ import {
   createSaleOrderLine,
   querySaleOrders,
   querySaleOrderLines,
+  deleteSaleOrder,
   type RawSaleOrder,
   type RawSaleOrderLine,
 } from '../api/client'
@@ -30,54 +32,14 @@ export interface CartItem {
   note: string
 }
 
-export interface OrderLine {
-  productId: string
-  productName: string
-  qty: number           // 需求量（客戶訂的）
-  allocatedQty: number  // 實際配量
-  unit: string
-  note: string
-}
 
-export interface Order {
-  id: string
-  customerId: string
-  date: string
-  deliveryDate: string
-  note: string
-  lines: OrderLine[]
-  state: 'draft' | 'sent' | 'sale' | 'done' | 'cancel'
-}
 
 export interface ApiOrder {
   raw: RawSaleOrder
   lines: RawSaleOrderLine[]
 }
 
-export interface ProcurementItem {
-  productId: string
-  productName: string
-  unit: string
-  supplierId: string
-  estimatedQty: number
-  actualQty: number
-  purchasePrice: number
-  markupRate: number
-  sellingPrice: number
-  state: 'pending' | 'priced' | 'stocked'
-}
 
-export interface StockItem {
-  productId: string
-  productName: string
-  unit: string
-  qty: number
-  allocatedQty: number
-  remainingQty: number
-  purchasePrice: number
-  sellingPrice: number
-  date: string
-}
 
 // === Store ===
 
@@ -86,8 +48,8 @@ interface AppState {
   liveProducts: Product[]
   liveCategories: Category[]
   productsLoading: boolean
-  productsLoaded: boolean
-  loadProducts: () => Promise<void>
+  productsLoadedAt: number
+  loadProducts: (force?: boolean) => Promise<void>
 
   // 購物車
   cart: CartItem[]
@@ -100,41 +62,25 @@ interface AppState {
   // 訂單（API）
   apiOrders: ApiOrder[]
   ordersLoading: boolean
-  loadOrders: () => Promise<void>
+  loadOrders: (offset?: number) => Promise<void>
   submitOrderAsync: (deliveryDate: string, note: string) => Promise<string>
   submitError: string | null
 
-  // Legacy（保留 Admin 功能）
-  orders: Order[]
-  submitOrder: (customerId: string, deliveryDate: string, note: string) => void
-  procurementItems: ProcurementItem[]
-  generateProcurement: () => void
-  updatePurchasePrice: (productId: string, price: number) => void
-  updateActualQty: (productId: string, qty: number) => void
-  updateMarkupRate: (productId: string, rate: number) => void
-  applyItemPricing: (productId: string) => void
-  applyAllPricing: () => void
-  stockItem: (productId: string) => void
-  stockItems: StockItem[]
-  updateAllocatedQty: (orderId: string, productId: string, qty: number) => void
-  confirmOrder: (orderId: string) => void
-  markShipped: (orderId: string) => void
-  markDelivered: (orderId: string) => void
-  currentCustomer: Customer
+
 }
 
-let orderCounter = 1
-
 export const useStore = create<AppState>((set, get) => ({
-  currentCustomer: customers[0],
 
   // === 全域產品 ===
   liveProducts: [],
   liveCategories: [],
   productsLoading: false,
-  productsLoaded: false,
-  loadProducts: async () => {
-    if (get().productsLoaded || get().productsLoading) return
+  productsLoadedAt: 0,
+  loadProducts: async (force = false) => {
+    const { productsLoadedAt, productsLoading } = get()
+    // 5 minutes TTL
+    if (!force && Date.now() - productsLoadedAt < 5 * 60 * 1000) return
+    if (productsLoading) return
     set({ productsLoading: true })
     try {
       const [rawTemplates, rawCategories] = await Promise.all([
@@ -143,7 +89,7 @@ export const useStore = create<AppState>((set, get) => ({
       ])
       const cats = mapCategories(rawCategories)
       const prods = mapProducts(rawTemplates, cats)
-      set({ liveProducts: prods, liveCategories: cats, productsLoaded: true })
+      set({ liveProducts: prods, liveCategories: cats, productsLoadedAt: Date.now() })
     } catch (err) {
       console.error('Failed to load products:', err)
     } finally {
@@ -180,13 +126,14 @@ export const useStore = create<AppState>((set, get) => ({
   ordersLoading: false,
   submitError: null,
 
-  loadOrders: async () => {
+  loadOrders: async (offset = 0) => {
     set({ ordersLoading: true })
     try {
       const orders = await querySaleOrders(
         [],
         [{ column: 'created_at', direction: 'desc' }],
         50,
+        offset,
       )
       // 批次載入所有訂單的明細行
       const orderIds = orders.map(o => o.id)
@@ -201,7 +148,9 @@ export const useStore = create<AppState>((set, get) => ({
         raw: o,
         lines: allLines.filter(l => l.order_id === o.id),
       }))
-      set({ apiOrders })
+      set(state => ({ 
+        apiOrders: offset > 0 ? [...state.apiOrders, ...apiOrders] : apiOrders 
+      }))
     } catch (err) {
       console.error('Failed to load orders:', err)
     } finally {
@@ -216,7 +165,9 @@ export const useStore = create<AppState>((set, get) => ({
     set({ submitError: null })
     try {
       // 1. 建立 sale_order
+      const authUser = useAuthStore.getState().user
       const orderRes = await createSaleOrder({
+        customer_id: authUser?.id,
         date_order: new Date().toISOString().slice(0, 10),
         note: note || undefined,
         state: 'draft',
@@ -224,17 +175,23 @@ export const useStore = create<AppState>((set, get) => ({
       const orderId = orderRes.id
 
       // 2. 建立每一行 sale_order_line
-      const linePromises = cart.map(item => {
-        const product = liveProducts.find(p => p.id === item.productId)
-        return createSaleOrderLine({
-          order_id: orderId,
-          product_template_id: item.productId,
-          name: product ? `${product.name}${item.note ? ` (${item.note})` : ''}` : item.productId,
-          product_uom_qty: item.qty,
-          delivery_date: deliveryDate,
+      try {
+        const linePromises = cart.map(item => {
+          const product = liveProducts.find(p => p.id === item.productId)
+          return createSaleOrderLine({
+            order_id: orderId,
+            product_template_id: item.productId,
+            name: product ? `${product.name}${item.note ? ` (${item.note})` : ''}` : item.productId,
+            product_uom_qty: item.qty,
+            delivery_date: deliveryDate,
+          })
         })
-      })
-      await Promise.all(linePromises)
+        await Promise.all(linePromises)
+      } catch (lineErr) {
+        // 部分失敗回滾
+        await deleteSaleOrder(orderId).catch(console.error)
+        throw lineErr
+      }
 
       // 3. 清空購物車並重新載入訂單
       clearCart()
@@ -247,109 +204,4 @@ export const useStore = create<AppState>((set, get) => ({
       throw err
     }
   },
-
-  // === Legacy local orders（保留 Admin 功能） ===
-  orders: [],
-  submitOrder: (customerId, deliveryDate, note) => {
-    const { cart, clearCart } = get()
-    if (cart.length === 0) return
-    const id = `SO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(orderCounter++).padStart(3, '0')}`
-    const lines: OrderLine[] = cart.map(item => {
-      const p = mockProducts.find(pp => pp.id === item.productId)!
-      return {
-        productId: item.productId,
-        productName: p.name,
-        qty: item.qty,
-        allocatedQty: item.qty,
-        unit: p.unit,
-        note: item.note,
-      }
-    })
-    set((s) => ({ orders: [...s.orders, { id, customerId, date: new Date().toISOString().slice(0, 10), deliveryDate, note, lines, state: 'draft' as const }] }))
-    clearCart()
-  },
-
-  // === 採購品項 ===
-  procurementItems: [],
-  generateProcurement: () => {
-    const { orders } = get()
-    const draftOrders = orders.filter(o => o.state === 'draft')
-    const itemMap = new Map<string, ProcurementItem>()
-    for (const order of draftOrders) {
-      for (const line of order.lines) {
-        const p = mockProducts.find(pp => pp.id === line.productId)!
-        const existing = itemMap.get(line.productId)
-        if (existing) {
-          existing.estimatedQty = Math.round((existing.estimatedQty + line.qty) * 100) / 100
-          existing.actualQty = existing.estimatedQty
-        } else {
-          itemMap.set(line.productId, {
-            productId: line.productId, productName: p.name, unit: p.unit, supplierId: p.supplierId,
-            estimatedQty: line.qty, actualQty: line.qty,
-            purchasePrice: 0, markupRate: 130, sellingPrice: 0, state: 'pending',
-          })
-        }
-      }
-    }
-    set({ procurementItems: Array.from(itemMap.values()) })
-  },
-
-  updatePurchasePrice: (productId, price) => set((s) => ({
-    procurementItems: s.procurementItems.map(item =>
-      item.productId === productId ? { ...item, purchasePrice: price, sellingPrice: price > 0 ? Math.round(price * item.markupRate / 100) : 0 } : item
-    ),
-  })),
-  updateActualQty: (productId, qty) => set((s) => ({
-    procurementItems: s.procurementItems.map(item => item.productId === productId ? { ...item, actualQty: qty } : item),
-  })),
-  updateMarkupRate: (productId, rate) => set((s) => ({
-    procurementItems: s.procurementItems.map(item =>
-      item.productId === productId ? { ...item, markupRate: rate, sellingPrice: item.purchasePrice > 0 ? Math.round(item.purchasePrice * rate / 100) : 0 } : item
-    ),
-  })),
-  applyItemPricing: (productId) => set((s) => ({
-    procurementItems: s.procurementItems.map(item => item.productId === productId && item.purchasePrice > 0 ? { ...item, state: 'priced' as const } : item),
-  })),
-  applyAllPricing: () => set((s) => ({
-    procurementItems: s.procurementItems.map(item => item.purchasePrice > 0 ? { ...item, state: 'priced' as const } : item),
-  })),
-
-  stockItem: (productId) => set((s) => {
-    const item = s.procurementItems.find(i => i.productId === productId)
-    if (!item || item.state !== 'priced') return s
-    const newStock: StockItem = {
-      productId: item.productId, productName: item.productName, unit: item.unit,
-      qty: item.actualQty, allocatedQty: 0, remainingQty: item.actualQty,
-      purchasePrice: item.purchasePrice, sellingPrice: item.sellingPrice,
-      date: new Date().toISOString().slice(0, 10),
-    }
-    return {
-      procurementItems: s.procurementItems.map(i => i.productId === productId ? { ...i, state: 'stocked' as const } : i),
-      stockItems: [...s.stockItems.filter(si => si.productId !== productId), newStock],
-    }
-  }),
-
-  stockItems: [],
-
-  updateAllocatedQty: (orderId, productId, qty) => set((s) => ({
-    orders: s.orders.map(o =>
-      o.id === orderId
-        ? { ...o, lines: o.lines.map(l => l.productId === productId ? { ...l, allocatedQty: qty } : l) }
-        : o
-    ),
-  })),
-
-  confirmOrder: (orderId) => set((s) => ({
-    orders: s.orders.map(o => o.id === orderId && (o.state === 'draft')
-      ? { ...o, state: 'sale' as const }
-      : o
-    ),
-  })),
-
-  markShipped: (orderId) => set((s) => ({
-    orders: s.orders.map(o => o.id === orderId ? { ...o, state: 'done' as const } : o),
-  })),
-  markDelivered: (orderId) => set((s) => ({
-    orders: s.orders.map(o => o.id === orderId ? { ...o, state: 'done' as const } : o),
-  })),
 }))

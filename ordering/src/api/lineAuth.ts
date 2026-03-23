@@ -12,21 +12,26 @@ const LINE_CHANNEL_ID = import.meta.env.VITE_LINE_CHANNEL_ID || ''
 const LINE_CALLBACK_URL = import.meta.env.VITE_LINE_CALLBACK_URL || `${window.location.origin}/auth/line/callback`
 
 /**
+ * Generate a random hex string of given byte length
+ */
+function generateHex(bytes: number): string {
+  const array = new Uint8Array(bytes)
+  crypto.getRandomValues(array)
+  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
  * Generate a random state string for CSRF protection
  */
 function generateState(): string {
-  const array = new Uint8Array(16)
-  crypto.getRandomValues(array)
-  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+  return generateHex(16)
 }
 
 /**
  * Generate a random nonce for replay attack protection
  */
 function generateNonce(): string {
-  const array = new Uint8Array(16)
-  crypto.getRandomValues(array)
-  return Array.from(array, b => b.toString(16).padStart(2, '0')).join('')
+  return generateHex(16)
 }
 
 /**
@@ -78,6 +83,7 @@ export function getSavedNonce(): string | null {
 export async function exchangeLineCode(code: string, redirectUri: string): Promise<{
   access_token: string
   refresh_token: string
+  expires_in: number
   user: {
     id: string
     email: string

@@ -12,6 +12,8 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 const app = express()
 app.use(cors())
@@ -204,6 +206,20 @@ app.post('/line-auth/callback', async (req, res) => {
 // Health check
 app.get('/line-auth/health', (req, res) => {
   res.json({ status: 'ok', service: 'line-auth-backend' })
+})
+
+// --- SPA 靜態檔案伺服 ---
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const distPath = path.join(__dirname, '../dist')
+app.use(express.static(distPath))
+
+// 所有未命中 API / Auth 的請求，回傳 index.html (SPA Fallback)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/line-auth/') || req.path.startsWith('/api/')) {
+    return next()
+  }
+  res.sendFile(path.join(distPath, 'index.html'))
 })
 
 app.listen(Number(PORT), () => {

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  ordering:
+    build:
+      context: ./ordering
+    ports:
+      - "127.0.0.1:3001:3001"
+    restart: always
+    env_file:
+      - ./ordering/.env
+      - ./ordering/backend/.env
+
+  admin:
+    build:
+      context: ./admin
+    ports:
+      - "127.0.0.1:3002:80"
+    restart: always
+    env_file:
+      - ./admin/.env

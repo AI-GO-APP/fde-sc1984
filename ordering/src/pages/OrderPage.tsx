@@ -4,20 +4,20 @@
  */
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { categories as mockCategories, products as mockProducts } from '../data/mockData'
 import type { Category, Product } from '../data/mockData'
+import SkeletonCard from '../components/SkeletonCard'
 import { useStore } from '../store/useStore'
 
 export default function OrderPage() {
   const navigate = useNavigate()
-  const { cart, addToCart, removeFromCart, loadProducts, liveProducts, liveCategories, productsLoading, productsLoaded } = useStore()
+  const { cart, addToCart, removeFromCart, loadProducts, liveProducts, liveCategories, productsLoading } = useStore()
   const [activeCat, setActiveCat] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
-  // 使用全域 store 的 LIVE 資料，fallback 到 mock
-  const categories: Category[] = liveCategories.length > 0 ? liveCategories : mockCategories
-  const products: Product[] = liveProducts.length > 0 ? liveProducts : mockProducts
-  const isLive = liveProducts.length > 0
+  // 使用全域 store 的 LIVE 資料
+  const categories: Category[] = liveCategories
+  const products: Product[] = liveProducts
+  const isLive = true
 
   useEffect(() => {
     loadProducts().catch(() => setError('無法連線 API，使用離線資料'))
@@ -80,8 +80,11 @@ export default function OrderPage() {
 
       {/* Product grid */}
       <div className="px-4 py-4 grid grid-cols-2 gap-3">
-        {filteredProducts.map(product => {
-          const inCart = cart.find(i => i.productId === product.id)
+        {productsLoading ? (
+          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+        ) : (
+          filteredProducts.map(product => {
+            const inCart = cart.find(i => i.productId === product.id)
           return (
             <div key={product.id} className="bg-white rounded-xl border border-gray-100 p-3 space-y-2">
               <div>
@@ -104,7 +107,8 @@ export default function OrderPage() {
               )}
             </div>
           )
-        })}
+        })
+        )}
         {filteredProducts.length === 0 && !productsLoading && (
           <div className="col-span-2 py-12 text-center text-gray-400">
             <p>此分類暫無商品</p>
