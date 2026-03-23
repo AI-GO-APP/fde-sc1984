@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import BackButton from '../components/BackButton'
 import { getProducts, type Product } from '../api/stock'
 import SearchInput from '../components/SearchInput'
 import { usePrint, PrintArea } from '../components/PrintProvider'
@@ -33,9 +34,7 @@ export default function StockPage() {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 p-1">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
-            </button>
+            <BackButton />
             <div>
               <h1 className="text-xl font-bold text-gray-900">Stock Report</h1>
               <p className="text-sm text-gray-400">{products.length} registered products</p>

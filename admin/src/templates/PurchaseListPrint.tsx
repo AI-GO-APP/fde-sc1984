@@ -1,30 +1,28 @@
 /**
  * 採購加總數量表 — 列印版面
- * 全品項彙總（跨供應商跨客戶）
+ * 使用 API 回傳的 PurchaseOrder 資料，不依賴 mockData
  */
-import type { Order } from '../store/useStore'
-import { products, suppliers } from '../data/mockData'
+import type { PurchaseOrder } from '../api/purchase'
 
 interface Props {
-  orders: Order[]
+  orders: PurchaseOrder[]
 }
 
 export default function PurchaseListPrint({ orders }: Props) {
-  const draftOrders = orders.filter(o => o.state === 'draft')
-
-  // 按品項彙總
-  const summary = new Map<string, { name: string; totalQty: number; unit: string; supplier: string; customerCount: number }>()
-  for (const order of draftOrders) {
+  // 按產品彙總
+  const summary = new Map<string, { name: string; totalQty: number; supplier: string; orderCount: number }>()
+  for (const order of orders) {
     for (const line of order.lines) {
-      const p = products.find(pp => pp.id === line.productId)!
-      const existing = summary.get(line.productId) || {
-        name: p.name, totalQty: 0, unit: p.unit,
-        supplier: suppliers.find(s => s.id === p.supplierId)?.name || '-',
-        customerCount: 0,
+      const key = line.product_id
+      const existing = summary.get(key) || {
+        name: line.product_id,
+        totalQty: 0,
+        supplier: order.supplier_id || '-',
+        orderCount: 0,
       }
-      existing.totalQty = Math.round((existing.totalQty + line.qty) * 100) / 100
-      existing.customerCount++
-      summary.set(line.productId, existing)
+      existing.totalQty = Math.round((existing.totalQty + line.quantity) * 100) / 100
+      existing.orderCount++
+      summary.set(key, existing)
     }
   }
 
@@ -38,7 +36,7 @@ export default function PurchaseListPrint({ orders }: Props) {
       </div>
       <div className="print-meta">
         <div>日期: {new Date().toISOString().slice(0, 10)}</div>
-        <div>品項數: {items.length} | 訂單數: {draftOrders.length}</div>
+        <div>品項數: {items.length} | 訂單數: {orders.length}</div>
       </div>
       <table className="print-table">
         <thead>
@@ -46,8 +44,7 @@ export default function PurchaseListPrint({ orders }: Props) {
             <th style={{ width: '5%' }}>#</th>
             <th style={{ width: '30%' }}>品名規格</th>
             <th style={{ width: '15%', textAlign: 'right' }}>需求總量</th>
-            <th style={{ width: '10%' }}>單位</th>
-            <th style={{ width: '10%', textAlign: 'right' }}>客戶數</th>
+            <th style={{ width: '10%', textAlign: 'right' }}>訂單數</th>
             <th style={{ width: '20%' }}>供應商</th>
           </tr>
         </thead>
@@ -57,8 +54,7 @@ export default function PurchaseListPrint({ orders }: Props) {
               <td>{i + 1}</td>
               <td>{item.name}</td>
               <td className="num bold">{item.totalQty.toFixed(2)}</td>
-              <td>{item.unit}</td>
-              <td className="num">{item.customerCount}</td>
+              <td className="num">{item.orderCount}</td>
               <td>{item.supplier}</td>
             </tr>
           ))}

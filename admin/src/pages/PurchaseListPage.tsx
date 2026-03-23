@@ -253,7 +253,7 @@ export default function PurchaseListPage() {
 
       {/* 列印隱藏區 */}
       <PrintArea printRef={poRef}>
-        <PurchaseOrderPrint supplierIds={[...selectedSuppliers]} orders={draftOrders as any} />
+        <PurchaseOrderPrint orders={procurementItems as any} />
       </PrintArea>
       <PrintArea printRef={listRef}>
         <PurchaseListPrint orders={draftOrders as any} />

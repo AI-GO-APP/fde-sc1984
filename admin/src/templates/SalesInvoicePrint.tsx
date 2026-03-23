@@ -1,24 +1,19 @@
 /**
  * 客戶銷貨憑單 — 列印版面
- * 正式格式：公司抬頭、客戶統編、產品編號、行號、品項、單價、金額、合計/稅金/總計
+ * 使用 API 回傳的 SalesInvoice 資料，不依賴 mockData
  */
-import type { Order, StockItem } from '../store/useStore'
-import { customers, products } from '../data/mockData'
+import type { SalesInvoice } from '../api/sales'
 
 interface Props {
-  orders: Order[]
-  stockItems: StockItem[]
+  orders: SalesInvoice[]
 }
 
-export default function SalesInvoicePrint({ orders, stockItems }: Props) {
-  const getPrice = (productId: string) => stockItems.find(s => s.productId === productId)?.sellingPrice || 0
-
+export default function SalesInvoicePrint({ orders }: Props) {
   return (
     <>
       {orders.map((order, idx) => {
-        const cust = customers.find(c => c.id === order.customerId)
-        const total = order.lines.reduce((sum, l) => sum + l.allocatedQty * getPrice(l.productId), 0)
-        const totalQty = order.lines.reduce((sum, l) => sum + l.allocatedQty, 0)
+        const total = order.total_amount || order.lines.reduce((sum, l) => sum + l.subtotal, 0)
+        const totalQty = order.lines.reduce((sum, l) => sum + l.quantity, 0)
 
         return (
           <div key={order.id} className={idx > 0 ? 'print-page-break' : ''}>
@@ -29,14 +24,11 @@ export default function SalesInvoicePrint({ orders, stockItems }: Props) {
             <div className="print-meta">
               <div>
                 <div>銷貨日期: <strong>{order.date}</strong></div>
-                <div>客戶名稱: <strong>{cust?.ref} {cust?.name}</strong></div>
-                <div>統一編號: {cust?.vat || '-'}</div>
-                <div>送貨地址: {cust?.address}</div>
-                <div>聯絡人: {cust?.contactPerson || '-'}　電話: {cust?.phone}</div>
+                <div>客戶名稱: <strong>{order.customer_id || '-'}</strong></div>
+                <div>單號: <strong>{order.erp_id}</strong></div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div>銷貨單號: <strong>{order.id}</strong></div>
-                <div>課稅類別: 免稅</div>
+                <div>狀態: {order.status}</div>
                 <div style={{ marginTop: '4pt', color: '#999', fontSize: '9pt' }}>
                   第 {idx + 1} 頁 / 共 {orders.length} 頁
                 </div>
@@ -45,40 +37,30 @@ export default function SalesInvoicePrint({ orders, stockItems }: Props) {
             <table className="print-table">
               <thead>
                 <tr>
-                  <th style={{ width: '4%' }}>#</th>
-                  <th style={{ width: '10%' }}>編號</th>
-                  <th style={{ width: '24%' }}>品名規格</th>
-                  <th style={{ width: '10%', textAlign: 'right' }}>數量</th>
-                  <th style={{ width: '7%' }}>單位</th>
-                  <th style={{ width: '11%', textAlign: 'right' }}>單價</th>
-                  <th style={{ width: '14%', textAlign: 'right' }}>金額</th>
-                  <th style={{ width: '20%' }}>備註</th>
+                  <th style={{ width: '5%' }}>#</th>
+                  <th style={{ width: '30%' }}>品名規格</th>
+                  <th style={{ width: '12%', textAlign: 'right' }}>數量</th>
+                  <th style={{ width: '12%', textAlign: 'right' }}>單價</th>
+                  <th style={{ width: '15%', textAlign: 'right' }}>金額</th>
+                  <th style={{ width: '26%' }}>備註</th>
                 </tr>
               </thead>
               <tbody>
-                {order.lines.map((line, i) => {
-                  const price = getPrice(line.productId)
-                  const amount = Math.round(line.allocatedQty * price)
-                  const prod = products.find(pp => pp.id === line.productId)
-                  return (
-                    <tr key={i}>
-                      <td>{i + 1}</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '9pt' }}>{prod?.defaultCode}</td>
-                      <td>{line.productName}</td>
-                      <td className="num">{line.allocatedQty.toFixed(2)}</td>
-                      <td>{line.unit}</td>
-                      <td className="num">{price > 0 ? price.toFixed(1) : '-'}</td>
-                      <td className="num bold">{price > 0 ? `$${amount.toLocaleString()}` : '-'}</td>
-                      <td>{line.note || ''}</td>
-                    </tr>
-                  )
-                })}
+                {order.lines.map((line, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td>{line.metadata?.note || line.product_id}</td>
+                    <td className="num">{line.quantity.toFixed(2)}</td>
+                    <td className="num">{line.unit_price > 0 ? line.unit_price.toFixed(1) : '-'}</td>
+                    <td className="num bold">{line.subtotal > 0 ? `$${Math.round(line.subtotal).toLocaleString()}` : '-'}</td>
+                    <td></td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr style={{ fontWeight: 'bold', borderTop: '2px solid #333' }}>
-                  <td colSpan={3} style={{ textAlign: 'right' }}>合計</td>
+                  <td colSpan={2} style={{ textAlign: 'right' }}>合計</td>
                   <td className="num">{totalQty.toFixed(2)}</td>
-                  <td></td>
                   <td></td>
                   <td className="num">${Math.round(total).toLocaleString()}</td>
                   <td></td>
@@ -92,11 +74,6 @@ export default function SalesInvoicePrint({ orders, stockItems }: Props) {
                 總計: <strong>${Math.round(total).toLocaleString()}</strong>
               </div>
             </div>
-            {order.note && (
-              <div style={{ marginTop: '8pt', fontSize: '9pt', color: '#666' }}>
-                📝 {order.note}
-              </div>
-            )}
             <div className="print-footer">
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>製單:________　覆核:________</span>
