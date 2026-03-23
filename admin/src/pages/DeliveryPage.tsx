@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { customers } from '../data/mockData'
-import { useStore } from '../store/useStore'
+import { getSalesInvoices, updateSalesInvoiceStatus, type SalesInvoice } from '../api/sales'
+import { getProducts, type Product } from '../api/stock'
 import ConfirmDialog from '../components/ConfirmDialog'
 import SearchInput from '../components/SearchInput'
 import StatusDropdown from '../components/StatusDropdown'
@@ -11,15 +11,16 @@ import DeliverySlipPrint from '../templates/DeliverySlipPrint'
 
 const stateOptions = [
   { value: 'all', label: 'All' },
-  { value: 'confirmed', label: 'Pending' },
+  { value: 'confirm', label: 'Pending' },
   { value: 'shipped', label: 'In Transit' },
-  { value: 'delivered', label: 'Delivered' },
+  { value: 'done', label: 'Delivered' },
 ]
 
 const stateConfig: Record<string, { label: string; color: string }> = {
-  confirmed: { label: 'Pending',    color: 'bg-orange-100 text-orange-700' },
-  shipped:   { label: 'In Transit', color: 'bg-blue-100 text-blue-700' },
+  confirm: { label: 'Pending',    color: 'bg-orange-100 text-orange-700' },
+  shipped: { label: 'In Transit', color: 'bg-blue-100 text-blue-700' },
   delivered: { label: 'Delivered',  color: 'bg-green-100 text-green-700' },
+  done:    { label: 'Delivered',  color: 'bg-green-100 text-green-700' },
 }
 
 const drivers = ['Driver A', 'Driver B', 'Driver C']
@@ -29,7 +30,10 @@ type DeliveryAction = { type: 'ship' | 'deliver'; orderId: string }
 
 export default function DeliveryPage() {
   const navigate = useNavigate()
-  const { orders, markShipped, markDelivered } = useStore()
+  const [salesOrders, setSalesOrders] = useState<SalesInvoice[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -42,34 +46,51 @@ export default function DeliveryPage() {
   const { contentRef: singleRef, print: printSingle } = usePrint()
   const [singlePrintId, setSinglePrintId] = useState<string | null>(null)
 
+  useEffect(() => {
+    Promise.all([getSalesInvoices(), getProducts()]).then(([invoices, prods]) => {
+      setSalesOrders(invoices)
+      setProducts(prods)
+      setLoading(false)
+    })
+  }, [])
+
+  const getProductName = (productId: string) => products.find(p => p.id === productId)?.name || 'Unknown'
+
   const deliverableOrders = useMemo(() => {
-    let list = orders.filter(o => ['confirmed', 'shipped', 'delivered'].includes(o.state))
-    if (filter !== 'all') list = list.filter(o => o.state === filter)
+    let list = salesOrders.filter(o => ['confirm', 'shipped', 'delivered', 'done'].includes(o.status))
+    if (filter !== 'all') list = list.filter(o => o.status === filter)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(o => {
-        const cust = customers.find(c => c.id === o.customerId)
-        return o.id.toLowerCase().includes(q) || cust?.name.toLowerCase().includes(q) || cust?.ref.toLowerCase().includes(q) || cust?.address.toLowerCase().includes(q)
+        const cName = o.customer_id || ''
+        return o.erp_id.toLowerCase().includes(q) || cName.toLowerCase().includes(q)
       })
     }
     return list
-  }, [orders, filter, search])
+  }, [salesOrders, filter, search])
 
   const totalPages = Math.ceil(deliverableOrders.length / PAGE_SIZE)
   const paged = deliverableOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const customerGroups = new Map<string, typeof paged>()
   for (const order of paged) {
-    const list = customerGroups.get(order.customerId) || []
+    const cid = order.customer_id || 'Unknown'
+    const list = customerGroups.get(cid) || []
     list.push(order)
-    customerGroups.set(order.customerId, list)
+    customerGroups.set(cid, list)
   }
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!confirmAction) return
-    if (confirmAction.type === 'ship') markShipped(confirmAction.orderId)
-    else markDelivered(confirmAction.orderId)
-    setConfirmAction(null)
+    try {
+      if (confirmAction.type === 'ship') await updateSalesInvoiceStatus(confirmAction.orderId, 'shipped')
+      else await updateSalesInvoiceStatus(confirmAction.orderId, 'done')
+      
+      const updated = await getSalesInvoices()
+      setSalesOrders(updated)
+    } finally {
+      setConfirmAction(null)
+    }
   }
 
   const toggleOrderSelect = (orderId: string) => {
@@ -82,10 +103,11 @@ export default function DeliveryPage() {
 
   const handleSinglePrint = (orderId: string) => { setSinglePrintId(orderId); setTimeout(() => printSingle(), 100) }
 
-  const batchPrintOrders = orders.filter(o => selectedOrders.has(o.id))
-  const singlePrintOrder = singlePrintId ? orders.filter(o => o.id === singlePrintId) : []
-  const actionOrder = confirmAction ? orders.find(o => o.id === confirmAction.orderId) : null
-  const actionCustomer = actionOrder ? customers.find(c => c.id === actionOrder.customerId) : null
+  const batchPrintOrders = salesOrders.filter(o => selectedOrders.has(o.id))
+  const singlePrintOrder = singlePrintId ? salesOrders.filter(o => o.id === singlePrintId) : []
+  const actionOrder = confirmAction ? salesOrders.find(o => o.id === confirmAction.orderId) : null
+
+  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading delivery orders...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -121,14 +143,13 @@ export default function DeliveryPage() {
         ) : (
           <div className="space-y-3">
             {Array.from(customerGroups.entries()).map(([custId, custOrders]) => {
-              const cust = customers.find(c => c.id === custId)
               const isExpanded = expanded === custId
               return (
                 <div key={custId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <button onClick={() => setExpanded(isExpanded ? null : custId)} className="w-full px-4 py-4 flex justify-between items-center hover:bg-gray-50">
                     <div className="text-left">
-                      <p className="font-bold text-gray-900">{cust?.ref} {cust?.name}</p>
-                      <p className="text-sm text-gray-400">{cust?.address}</p>
+                      <p className="font-bold text-gray-900">{custId}</p>
+                      <p className="text-sm text-gray-400">Loading Address...</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-400">{custOrders.length} orders</span>
@@ -136,7 +157,7 @@ export default function DeliveryPage() {
                     </div>
                   </button>
                   {isExpanded && custOrders.map(order => {
-                    const config = stateConfig[order.state] || stateConfig.confirmed
+                    const config = stateConfig[order.status] || stateConfig.confirm
                     return (
                       <div key={order.id} className="border-t border-gray-200">
                         <div className="px-4 py-3 flex justify-between items-center bg-gray-50">
@@ -156,13 +177,16 @@ export default function DeliveryPage() {
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>{config.label}</span>
                             <button onClick={() => setPreviewId(previewId === order.id ? null : order.id)} className="px-3 py-1 bg-gray-200 text-gray-600 rounded text-xs hover:bg-gray-300">{previewId === order.id ? 'Close' : 'Preview'}</button>
                             <button onClick={() => handleSinglePrint(order.id)} className="px-3 py-1 bg-gray-200 text-gray-600 rounded text-xs hover:bg-gray-300">Print</button>
-                            {order.state === 'confirmed' && <button onClick={() => setConfirmAction({ type: 'ship', orderId: order.id })} className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Ship</button>}
-                            {order.state === 'shipped' && <button onClick={() => setConfirmAction({ type: 'deliver', orderId: order.id })} className="px-3 py-1 bg-primary text-white rounded text-xs hover:bg-green-700">Delivered</button>}
+                            {order.status === 'confirm' && <button onClick={() => setConfirmAction({ type: 'ship', orderId: order.id })} className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">Ship</button>}
+                            {order.status === 'shipped' && <button onClick={() => setConfirmAction({ type: 'deliver', orderId: order.id })} className="px-3 py-1 bg-primary text-white rounded text-xs hover:bg-green-700">Delivered</button>}
                           </div>
                         </div>
                         <div className="px-4 py-2">
                           <div className="flex flex-wrap gap-1.5">
-                            {order.lines.map((line, i) => <span key={i} className="px-2 py-0.5 bg-gray-50 rounded text-xs text-gray-500">{line.productName} x{line.allocatedQty}{line.unit}</span>)}
+                            {order.lines.map((line, i) => {
+                              const pName = getProductName(line.product_id)
+                              return <span key={i} className="px-2 py-0.5 bg-gray-50 rounded text-xs text-gray-500">{pName} x{line.quantity}</span>
+                            })}
                           </div>
                         </div>
                       </div>
@@ -177,13 +201,13 @@ export default function DeliveryPage() {
 
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
-      <PrintArea printRef={batchRef}><DeliverySlipPrint orders={batchPrintOrders} /></PrintArea>
-      <PrintArea printRef={singleRef}><DeliverySlipPrint orders={singlePrintOrder} /></PrintArea>
+      <PrintArea printRef={batchRef}><DeliverySlipPrint orders={batchPrintOrders as any} /></PrintArea>
+      <PrintArea printRef={singleRef}><DeliverySlipPrint orders={singlePrintOrder as any} /></PrintArea>
 
       <ConfirmDialog
         open={!!confirmAction}
         title={confirmAction?.type === 'ship' ? 'Confirm shipment?' : 'Confirm delivery?'}
-        message={`Order ${actionOrder?.id} for ${actionCustomer?.name}`}
+        message={`Order ${actionOrder?.erp_id} for ${actionOrder?.customer_id}`}
         confirmText={confirmAction?.type === 'ship' ? 'Ship' : 'Delivered'}
         variant={confirmAction?.type === 'deliver' ? 'info' : 'warning'}
         onConfirm={handleConfirm}

@@ -1,10 +1,10 @@
 /**
  * A6 Sales Orders - with search, filter, select, batch, pagination, oversell check
  */
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { customers } from '../data/mockData'
-import { useStore } from '../store/useStore'
+import { getSalesInvoices, updateSalesInvoiceStatus, type SalesInvoice } from '../api/sales'
+import { getProducts, type Product } from '../api/stock'
 import ConfirmDialog from '../components/ConfirmDialog'
 import SearchInput from '../components/SearchInput'
 import StatusDropdown from '../components/StatusDropdown'
@@ -22,43 +22,60 @@ const stateOptions = [
 
 const stateConfig: Record<string, { label: string; color: string }> = {
   draft:     { label: 'Pending',   color: 'bg-orange-100 text-orange-700' },
-  allocated: { label: 'Pending',   color: 'bg-orange-100 text-orange-700' },
-  confirmed: { label: 'Confirmed', color: 'bg-green-100 text-green-700' },
+  pending:   { label: 'Pending',   color: 'bg-orange-100 text-orange-700' },
+  confirm:   { label: 'Confirmed', color: 'bg-green-100 text-green-700' },
+  allocated: { label: 'Allocated', color: 'bg-green-100 text-green-700' },
   shipped:   { label: 'Shipped',   color: 'bg-blue-100 text-blue-700' },
   delivered: { label: 'Delivered', color: 'bg-gray-100 text-gray-600' },
+  done:      { label: 'Delivered', color: 'bg-gray-100 text-gray-600' },
 }
 
 const PAGE_SIZE = 10
 
 export default function SalesOrdersPage() {
   const navigate = useNavigate()
-  const { orders, stockItems, updateAllocatedQty, confirmOrder } = useStore()
+  const [salesOrders, setSalesOrders] = useState<SalesInvoice[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [confirmAction, setConfirmAction] = useState<{ type: 'single' | 'batch'; orderId?: string } | null>(null)
   const [page, setPage] = useState(1)
+  const [allocatedMap, setAllocatedMap] = useState<Record<string, number>>({})
   const { contentRef, print: handlePrint } = usePrint()
 
-  const getStock = (productId: string) => stockItems.find(s => s.productId === productId)
-  const getPrice = (productId: string) => getStock(productId)?.sellingPrice || 0
-  const getStockQty = (productId: string) => getStock(productId)?.qty || 0
+  useEffect(() => {
+    Promise.all([getSalesInvoices(), getProducts()]).then(([invoices, prods]) => {
+      setSalesOrders(invoices)
+      setProducts(prods)
+      setLoading(false)
+    })
+  }, [])
+
+  const getProduct = (productId: string) => products.find(s => s.id === productId)
+  const getStockQty = (productId: string) => {
+    const p = getProduct(productId)
+    return p?.stock || 0
+  }
 
   const filtered = useMemo(() => {
-    let list = orders
-    if (filter !== 'all') list = list.filter(o => o.state === filter)
+    let list = salesOrders
+    if (filter !== 'all') {
+      if (filter === 'confirmed') list = list.filter(o => o.status === 'confirm')
+      else list = list.filter(o => o.status === filter)
+    }
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(o => {
-        const cust = customers.find(c => c.id === o.customerId)
-        return o.id.toLowerCase().includes(q) ||
-          cust?.name.toLowerCase().includes(q) ||
-          cust?.ref.toLowerCase().includes(q)
+        const cName = o.customer_id || ''
+        return o.erp_id.toLowerCase().includes(q) || cName.toLowerCase().includes(q)
       })
     }
     return [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [orders, filter, search])
+  }, [salesOrders, filter, search])
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -71,28 +88,48 @@ export default function SalesOrdersPage() {
     else setSelectedOrders(new Set(filtered.map(o => o.id)))
   }
 
-  const handleConfirm = () => {
+  const updateAllocatedQty = (orderId: string, productId: string, qty: number) => {
+    setAllocatedMap(prev => ({ ...prev, [`${orderId}_${productId}`]: qty }))
+  }
+
+  const handleConfirm = async () => {
     if (!confirmAction) return
-    if (confirmAction.type === 'single' && confirmAction.orderId) {
-      confirmOrder(confirmAction.orderId)
-    } else if (confirmAction.type === 'batch') {
-      for (const id of selectedOrders) {
-        const o = orders.find(ord => ord.id === id)
-        if (o && (o.state === 'draft' || o.state === 'allocated')) confirmOrder(id)
+    try {
+      if (confirmAction.type === 'single' && confirmAction.orderId) {
+        await updateSalesInvoiceStatus(confirmAction.orderId, 'confirm')
+      } else if (confirmAction.type === 'batch') {
+        const promises = []
+        for (const id of selectedOrders) {
+          const o = salesOrders.find(ord => ord.id === id)
+          if (o && (o.status === 'draft' || o.status === 'pending')) {
+            promises.push(updateSalesInvoiceStatus(id, 'confirm'))
+          }
+        }
+        await Promise.all(promises)
       }
+      
+      const updated = await getSalesInvoices()
+      setSalesOrders(updated)
+    } finally {
+      setConfirmAction(null)
+      setSelectedOrders(new Set())
     }
-    setConfirmAction(null)
-    setSelectedOrders(new Set())
   }
 
   const checkOversell = (orderId: string) => {
-    const order = orders.find(o => o.id === orderId)
+    const order = salesOrders.find(o => o.id === orderId)
     if (!order) return false
-    return order.lines.some(l => { const s = getStockQty(l.productId); return s > 0 && l.allocatedQty > s })
+    return order.lines.some(l => { 
+      const s = getStockQty(l.product_id)
+      const allocated = allocatedMap[`${orderId}_${l.product_id}`] ?? l.quantity
+      return s > 0 && allocated > s 
+    })
   }
 
-  const printableOrders = orders.filter(o => selectedOrders.has(o.id))
-  const batchableCount = [...selectedOrders].filter(id => { const o = orders.find(ord => ord.id === id); return o?.state === 'draft' || o?.state === 'allocated' }).length
+  const printableOrders = salesOrders.filter(o => selectedOrders.has(o.id))
+  const batchableCount = [...selectedOrders].filter(id => { const o = salesOrders.find(ord => ord.id === id); return o?.status === 'draft' || o?.status === 'pending' }).length
+
+  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading sales orders...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -104,7 +141,7 @@ export default function SalesOrdersPage() {
             </button>
             <div>
               <h1 className="text-xl font-bold text-gray-900">Sales Orders</h1>
-              <p className="text-sm text-gray-400">{filtered.length} orders | {stockItems.length} stocked items</p>
+              <p className="text-sm text-gray-400">{filtered.length} orders | {products.length} registered products</p>
             </div>
           </div>
           <div className="flex gap-2">
@@ -128,13 +165,11 @@ export default function SalesOrdersPage() {
         </div>
       </header>
 
-      {stockItems.length > 0 && (
+      {products.length > 0 && (
         <div className="px-6 pt-4">
           <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm">
-            <span className="font-medium text-blue-700">Stock:</span>
-            <span className="text-blue-600 ml-2">
-              {stockItems.map(s => `${s.productName} ${s.qty}${s.unit}@$${s.sellingPrice}`).join(' | ')}
-            </span>
+            <span className="font-medium text-blue-700">Products tracking count:</span>
+            <span className="text-blue-600 ml-2">{products.length} items</span>
           </div>
         </div>
       )}
@@ -149,11 +184,10 @@ export default function SalesOrdersPage() {
           </div>
         ) : (
           paged.map(order => {
-            const cust = customers.find(c => c.id === order.customerId)
-            const config = stateConfig[order.state] || stateConfig.draft
+            const config = stateConfig[order.status] || stateConfig.draft
             const isExpanded = expanded === order.id
-            const total = order.lines.reduce((s, l) => s + l.allocatedQty * getPrice(l.productId), 0)
             const hasOversell = checkOversell(order.id)
+            const total = order.total_amount
 
             return (
               <div key={order.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -162,14 +196,14 @@ export default function SalesOrdersPage() {
                     <input type="checkbox" checked={selectedOrders.has(order.id)} onChange={() => toggleOrder(order.id)}
                       className="w-4 h-4 accent-primary rounded border-gray-300 bg-white" />
                     <button onClick={() => setExpanded(isExpanded ? null : order.id)} className="text-left">
-                      <p className="font-bold text-gray-900">{cust?.ref} {cust?.name}</p>
-                      <p className="text-xs text-gray-400">{order.id} | {order.date} | {order.lines.length} items</p>
+                      <p className="font-bold text-gray-900">{order.customer_id || 'Walk-in Customer'}</p>
+                      <p className="text-xs text-gray-400">{order.erp_id} | {order.date} | {order.lines.length} items</p>
                     </button>
                   </div>
                   <div className="flex items-center gap-3">
                     {total > 0 && <span className="text-lg font-bold text-primary">${Math.round(total).toLocaleString()}</span>}
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${config.color}`}>{config.label}</span>
-                    {(order.state === 'draft' || order.state === 'allocated') && (
+                    {(order.status === 'draft' || order.status === 'pending') && (
                       <button onClick={() => setConfirmAction({ type: 'single', orderId: order.id })}
                         className={`px-3 py-1 rounded text-xs text-white ${hasOversell ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-green-700'}`}>
                         {hasOversell ? 'Oversell!' : 'Confirm'}
@@ -195,28 +229,30 @@ export default function SalesOrdersPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {order.lines.map(line => {
-                          const price = getPrice(line.productId)
-                          const stockQty = getStockQty(line.productId)
-                          const amount = Math.round(line.allocatedQty * price)
-                          const oversell = stockQty > 0 && line.allocatedQty > stockQty
+                        {order.lines.map((line, idx) => {
+                          const prod = getProduct(line.product_id)
+                          const price = line.unit_price
+                          const stockQty = getStockQty(line.product_id)
+                          const allocated = allocatedMap[`${order.id}_${line.product_id}`] ?? line.quantity
+                          const amount = Math.round(allocated * price)
+                          const oversell = stockQty > 0 && allocated > stockQty
                           return (
-                            <tr key={line.productId} className={`border-b border-gray-50 ${oversell ? 'bg-red-50/50' : stockQty === 0 ? 'bg-yellow-50/50' : ''}`}>
-                              <td className="py-2 px-4 font-medium">{line.productName}</td>
-                              <td className="py-2 px-4 text-right text-gray-400">{line.qty.toFixed(2)}</td>
+                            <tr key={idx} className={`border-b border-gray-50 ${oversell ? 'bg-red-50/50' : stockQty === 0 ? 'bg-yellow-50/50' : ''}`}>
+                              <td className="py-2 px-4 font-medium">{prod?.name || 'Unknown'}</td>
+                              <td className="py-2 px-4 text-right text-gray-400">{line.quantity.toFixed(2)}</td>
                               <td className="py-2 px-4 text-right">
-                                <input type="number" value={line.allocatedQty} step="0.01" min="0"
-                                  onChange={(e) => updateAllocatedQty(order.id, line.productId, parseFloat(e.target.value) || 0)}
+                                <input type="number" value={allocated} step="0.01" min="0"
+                                  onChange={(e) => updateAllocatedQty(order.id, line.product_id, parseFloat(e.target.value) || 0)}
                                   className="w-20 text-right px-1.5 py-1 border border-gray-200 rounded-lg bg-white font-medium text-sm"
-                                  disabled={order.state === 'confirmed'} />
+                                  disabled={order.status === 'confirm'} />
                               </td>
-                              <td className="py-2 px-4 text-gray-400">{line.unit}</td>
+                              <td className="py-2 px-4 text-gray-400">{prod?.uom_id || 'unit'}</td>
                               <td className={`py-2 px-4 text-right text-xs ${stockQty > 0 ? (oversell ? 'text-red-600 font-bold' : 'text-green-600') : 'text-orange-500'}`}>
                                 {stockQty > 0 ? stockQty.toFixed(2) : 'N/A'}
                               </td>
                               <td className="py-2 px-4 text-right">{price > 0 ? `$${price}` : <span className="text-orange-500 text-xs">TBD</span>}</td>
                               <td className="py-2 px-4 text-right font-bold text-primary">{price > 0 ? `$${amount.toLocaleString()}` : '-'}</td>
-                              <td className="py-2 px-4 text-gray-400 text-xs">{line.note || ''}</td>
+                              <td className="py-2 px-4 text-gray-400 text-xs">{line.metadata?.note || ''}</td>
                             </tr>
                           )
                         })}
@@ -226,7 +262,7 @@ export default function SalesOrdersPage() {
                       <span className="text-gray-400">Subtotal: </span>
                       <strong className="text-primary text-lg">${Math.round(total).toLocaleString()}</strong>
                     </div>
-                    {order.note && <p className="px-4 py-1.5 text-xs text-gray-400 border-t border-gray-50">Note: {order.note}</p>}
+                    {order.metadata?.note && <p className="px-4 py-1.5 text-xs text-gray-400 border-t border-gray-50">Note: {order.metadata.note}</p>}
                   </div>
                 )}
               </div>
@@ -238,7 +274,7 @@ export default function SalesOrdersPage() {
       <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
 
       <PrintArea printRef={contentRef}>
-        <SalesInvoicePrint orders={printableOrders} stockItems={stockItems} />
+        <SalesInvoicePrint orders={printableOrders as any} stockItems={products as any} />
       </PrintArea>
 
       <ConfirmDialog

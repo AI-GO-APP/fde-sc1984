@@ -2,10 +2,11 @@
  * A2 進貨總清單頁 — 客戶列表 + 按品項彙總 雙 Tab
  * 含列印功能：供應商採購單 + 採購加總數量表
  */
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { products, suppliers, customers } from '../data/mockData'
-import { useStore } from '../store/useStore'
+import { getSalesInvoices, type SalesInvoice } from '../api/sales'
+import { getProducts, type Product } from '../api/stock'
+import { getPurchaseOrders, type PurchaseOrder } from '../api/purchase'
 import { usePrint, PrintArea } from '../components/PrintProvider'
 import PurchaseOrderPrint from '../templates/PurchaseOrderPrint'
 import PurchaseListPrint from '../templates/PurchaseListPrint'
@@ -14,34 +15,55 @@ export default function PurchaseListPage() {
   const navigate = useNavigate()
   const [view, setView] = useState<'customer' | 'product'>('customer')
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
-  const { orders, procurementItems, generateProcurement } = useStore()
+  
+  const [draftOrders, setDraftOrders] = useState<SalesInvoice[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [procurementItems, setProcurementItems] = useState<PurchaseOrder[]>([])
+  const [loading, setLoading] = useState(true)
+
   const { contentRef: poRef, print: printPO } = usePrint()
   const { contentRef: listRef, print: printList } = usePrint()
   const [selectedSuppliers, setSelectedSuppliers] = useState<Set<string>>(new Set())
 
-  const draftOrders = orders.filter(o => o.state === 'draft')
+  useEffect(() => {
+    Promise.all([
+      getSalesInvoices(),
+      getProducts(),
+      getPurchaseOrders()
+    ]).then(([invoices, prods, orders]) => {
+      setDraftOrders(invoices.filter(i => i.status === 'draft' || i.status === 'pending'))
+      setProducts(prods)
+      setProcurementItems(orders)
+      setLoading(false)
+    })
+  }, [])
+
+  // 暫時代替假資料中的 customers/suppliers
+  const getCustomerName = (id: string) => id || 'Unknown Customer'
+  const getSupplierName = (id: string) => id || 'Unknown Supplier'
 
   // 按客戶分群
-  const customerGroups = new Map<string, typeof draftOrders>()
+  const customerGroups = new Map<string, SalesInvoice[]>()
   for (const order of draftOrders) {
-    const list = customerGroups.get(order.customerId) || []
+    const cid = order.customer_id || 'Unknown'
+    const list = customerGroups.get(cid) || []
     list.push(order)
-    customerGroups.set(order.customerId, list)
+    customerGroups.set(cid, list)
   }
 
   // 按品項彙總
   const productSummary = new Map<string, { name: string; code: string; totalQty: number; unit: string; customerCount: number; supplierId: string }>()
   for (const order of draftOrders) {
     for (const line of order.lines) {
-      const p = products.find(pp => pp.id === line.productId)!
-      const existing = productSummary.get(line.productId) || { name: p.name, code: p.defaultCode, totalQty: 0, unit: p.unit, customerCount: 0, supplierId: p.supplierId }
-      existing.totalQty = Math.round((existing.totalQty + line.qty) * 100) / 100
+      const p = products.find(pp => pp.id === line.product_id) || { name: 'Unknown', sku: line.product_id, uom_id: 'unit', supplierId: 'Unknown' }
+      const existing = productSummary.get(line.product_id) || { name: p.name, code: p.sku, totalQty: 0, unit: p.uom_id, customerCount: 0, supplierId: (p as any).supplierId || 'Unknown' }
+      existing.totalQty = Math.round((existing.totalQty + line.quantity) * 100) / 100
       existing.customerCount++
-      productSummary.set(line.productId, existing)
+      productSummary.set(line.product_id, existing)
     }
   }
 
-  // 供應商列表（用於勾選列印）
+  // 供應商列表
   const supplierIds = [...new Set(Array.from(productSummary.values()).map(d => d.supplierId))]
 
   const toggleSupplier = (id: string) => {
@@ -58,6 +80,8 @@ export default function PurchaseListPage() {
 
   const toggleCustomer = (id: string) => setExpandedCustomer(expandedCustomer === id ? null : id)
 
+  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading list...</div>
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
@@ -70,7 +94,7 @@ export default function PurchaseListPage() {
         </div>
         <div className="flex gap-2">
           {draftOrders.length > 0 && procurementItems.length === 0 && (
-            <button onClick={() => { generateProcurement(); navigate('/procurement') }}
+            <button onClick={() => { /* API call to generate procurement */ navigate('/procurement') }}
               className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-green-700">
               產生採購清單 → 前往定價
             </button>
@@ -110,21 +134,20 @@ export default function PurchaseListPage() {
           /* 客戶列表視角 */
           <div className="space-y-3">
             {Array.from(customerGroups.entries()).map(([custId, custOrders]) => {
-              const cust = customers.find(c => c.id === custId)
               const expanded = expandedCustomer === custId
               const totalItems = custOrders.reduce((sum, o) => sum + o.lines.length, 0)
               return (
                 <div key={custId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <button onClick={() => toggleCustomer(custId)} className="w-full px-4 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors">
                     <div className="text-left">
-                      <p className="font-bold text-gray-900">{cust?.ref} {cust?.name}</p>
+                      <p className="font-bold text-gray-900">{getCustomerName(custId)}</p>
                       <p className="text-sm text-gray-400">{custOrders.length} 筆訂單 · {totalItems} 品項</p>
                     </div>
                     <span className="text-gray-400 text-xl">{expanded ? '▾' : '▸'}</span>
                   </button>
                   {expanded && custOrders.map(order => (
                     <div key={order.id} className="border-t border-gray-100 px-4 py-3">
-                      <p className="text-xs text-gray-400 mb-2">{order.id} | {order.date} | 期望到貨: {order.deliveryDate}</p>
+                      <p className="text-xs text-gray-400 mb-2">{order.id} | {order.date} | 期望到貨: {order.metadata?.deliveryDate}</p>
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-gray-400 text-xs">
@@ -137,20 +160,20 @@ export default function PurchaseListPage() {
                         </thead>
                         <tbody>
                           {order.lines.map((line, i) => {
-                            const prod = products.find(pp => pp.id === line.productId)
+                            const prod = products.find(pp => pp.id === line.product_id) || { sku: line.product_id, name: 'Unknown', uom_id: 'unit' }
                             return (
                               <tr key={i} className="border-t border-gray-50">
-                                <td className="py-1.5 text-gray-400 text-xs font-mono">{prod?.defaultCode}</td>
-                                <td className="py-1.5 font-medium">{line.productName}</td>
-                                <td className="py-1.5 text-right font-bold text-primary">{line.qty.toFixed(2)}</td>
-                                <td className="py-1.5 text-gray-400 pl-2">{line.unit}</td>
-                                <td className="py-1.5 text-gray-400 text-xs">{line.note || '-'}</td>
+                                <td className="py-1.5 text-gray-400 text-xs font-mono">{prod.sku}</td>
+                                <td className="py-1.5 font-medium">{prod.name}</td>
+                                <td className="py-1.5 text-right font-bold text-primary">{line.quantity.toFixed(2)}</td>
+                                <td className="py-1.5 text-gray-400 pl-2">{prod.uom_id}</td>
+                                <td className="py-1.5 text-gray-400 text-xs">{line.metadata?.note || '-'}</td>
                               </tr>
                             )
                           })}
                         </tbody>
                       </table>
-                      {order.note && <p className="text-xs text-gray-400 mt-1 bg-gray-50 px-2 py-1 rounded">📝 {order.note}</p>}
+                      {order.metadata?.note && <p className="text-xs text-gray-400 mt-1 bg-gray-50 px-2 py-1 rounded">📝 {order.metadata.note}</p>}
                     </div>
                   ))}
                 </div>
@@ -180,7 +203,7 @@ export default function PurchaseListPage() {
                       <td className="py-3 px-4 text-right font-bold text-primary">{d.totalQty.toFixed(2)}</td>
                       <td className="py-3 px-4 text-gray-400">{d.unit}</td>
                       <td className="py-3 px-4 text-right">{d.customerCount}</td>
-                      <td className="py-3 px-4 text-gray-400">{suppliers.find(s => s.id === d.supplierId)?.name || '-'}</td>
+                      <td className="py-3 px-4 text-gray-400">{getSupplierName(d.supplierId)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -214,12 +237,11 @@ export default function PurchaseListPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {supplierIds.map(sid => {
-                  const sup = suppliers.find(s => s.id === sid)
                   const checked = selectedSuppliers.has(sid)
                   return (
                     <label key={sid} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${checked ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-transparent hover:bg-gray-100'}`}>
                       <input type="checkbox" checked={checked} onChange={() => toggleSupplier(sid)} className="accent-primary" />
-                      <span className="text-sm">{sup?.ref} {sup?.name}</span>
+                      <span className="text-sm">{getSupplierName(sid)}</span>
                     </label>
                   )
                 })}
@@ -231,10 +253,10 @@ export default function PurchaseListPage() {
 
       {/* 列印隱藏區 */}
       <PrintArea printRef={poRef}>
-        <PurchaseOrderPrint supplierIds={[...selectedSuppliers]} orders={draftOrders} />
+        <PurchaseOrderPrint supplierIds={[...selectedSuppliers]} orders={draftOrders as any} />
       </PrintArea>
       <PrintArea printRef={listRef}>
-        <PurchaseListPrint orders={draftOrders} />
+        <PurchaseListPrint orders={draftOrders as any} />
       </PrintArea>
     </div>
   )
