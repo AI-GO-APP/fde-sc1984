@@ -215,7 +215,7 @@ export function mapProducts(raw: RawProductTemplate[], categories: Category[]): 
     id: p.id,
     name: p.name,
     categoryId: p.categ_id || (categories.length > 0 ? categories[0].id : 'unknown'),
-    unit: (p.uom_id && p.uom_id.length === 36 && p.uom_id.includes('-')) ? (p.default_code || '') : (p.uom_id || '單位'),
+    unit: (p.uom_id && p.uom_id.length === 36 && p.uom_id.includes('-')) ? '' : (p.uom_id || '單位'),
     defaultCode: p.default_code || '',
     supplierId: '',
   }))
