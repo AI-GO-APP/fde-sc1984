@@ -165,9 +165,9 @@ export const useStore = create<AppState>((set, get) => ({
     set({ submitError: null })
     try {
       // 1. 建立 sale_order
-      const authUser = useAuthStore.getState().user
+      const customerId = useAuthStore.getState().customerId
       const orderRes = await createSaleOrder({
-        customer_id: authUser?.id,
+        customer_id: customerId || undefined,
         date_order: new Date().toISOString().slice(0, 10),
         note: note || undefined,
         state: 'draft',

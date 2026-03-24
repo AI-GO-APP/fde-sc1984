@@ -22,7 +22,7 @@ export default function RegisterPage() {
     setError('')
     try {
       const res = await register(email, password, displayName)
-      setAuth(res.access_token, res.refresh_token, res.user, res.expires_in)
+      setAuth(res.access_token, res.refresh_token, res.user, res.expires_in, res.customer_id)
       navigate('/order')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '註冊失敗')

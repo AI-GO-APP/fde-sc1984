@@ -50,7 +50,7 @@ export default function LineCallbackPage() {
         // Exchange the code for app tokens via backend
         const redirectUri = import.meta.env.VITE_LINE_CALLBACK_URL || `${window.location.origin}/auth/line/callback`
         const res = await exchangeLineCode(code, redirectUri)
-        setAuth(res.access_token, res.refresh_token, res.user, res.expires_in)
+        setAuth(res.access_token, res.refresh_token, res.user, res.expires_in, res.customer_id)
         navigate('/order', { replace: true })
       } catch (err: unknown) {
         setStatus('error')

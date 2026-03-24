@@ -23,6 +23,7 @@ export interface AuthResponse {
   expires_in: number
   token_type: string
   user: AuthUser
+  customer_id?: string | null
 }
 
 // --- API Calls ---

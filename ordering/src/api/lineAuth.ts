@@ -84,6 +84,7 @@ export async function exchangeLineCode(code: string, redirectUri: string): Promi
   access_token: string
   refresh_token: string
   expires_in: number
+  customer_id?: string | null
   user: {
     id: string
     email: string
