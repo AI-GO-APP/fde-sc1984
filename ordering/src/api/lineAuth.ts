@@ -75,16 +75,14 @@ export function getSavedNonce(): string | null {
   return nonce
 }
 
-/**
- * Exchange LINE authorization code for app tokens via backend
- * The backend handles the actual token exchange with LINE (using client_secret)
- * and returns our app's JWT tokens
- */
-export async function exchangeLineCode(code: string, redirectUri: string): Promise<{
+// --- 型別 ---
+
+/** LINE 登入成功回傳 */
+export interface LineLoginSuccess {
+  needs_email: false
   access_token: string
   refresh_token: string
   expires_in: number
-  customer_id?: string | null
   user: {
     id: string
     email: string
@@ -93,7 +91,25 @@ export async function exchangeLineCode(code: string, redirectUri: string): Promi
     is_active: boolean
     created_at: string
   }
-}> {
+}
+
+/** LINE 登入需補填 email */
+export interface LineLoginNeedsEmail {
+  needs_email: true
+  pending_token: string
+  display_name?: string
+  avatar_url?: string | null
+}
+
+export type LineExchangeResult = LineLoginSuccess | LineLoginNeedsEmail
+
+/**
+ * Exchange LINE authorization code for app tokens via backend
+ * 回傳兩種可能：
+ * - needs_email: false → 成功取得 token
+ * - needs_email: true  → LINE 用戶未授權 email，需補填
+ */
+export async function exchangeLineCode(code: string, redirectUri: string): Promise<LineExchangeResult> {
   // 呼叫本地後端（/line-auth/callback），Secret 只在後端處理
   const res = await fetch('/line-auth/callback', {
     method: 'POST',
@@ -101,12 +117,53 @@ export async function exchangeLineCode(code: string, redirectUri: string): Promi
     body: JSON.stringify({ code, redirect_uri: redirectUri }),
   })
 
-  const data = await res.json()
-
   if (!res.ok) {
-    const msg = typeof data.detail === 'string' ? data.detail : 'LINE Login failed'
+    let msg = `LINE 登入失敗 (${res.status})`
+    try {
+      const data = await res.json()
+      msg = typeof data.detail === 'string' ? data.detail : msg
+    } catch { /* 空 body */ }
     throw new Error(msg)
   }
 
-  return data
+  const data = await res.json()
+
+  // 若後端回傳 needs_email（LINE 用戶未授權 email）
+  if (data.needs_email || data.pending_token) {
+    return {
+      needs_email: true,
+      pending_token: data.pending_token || data.oauth_pending,
+      display_name: data.display_name,
+      avatar_url: data.avatar_url,
+    }
+  }
+
+  // 正常登入成功
+  return { needs_email: false, ...data }
 }
+
+/**
+ * 補填 email 完成 LINE 註冊
+ * 後端端點：POST /api/v1/custom-app-oauth/{slug}/oauth/complete-email
+ */
+export async function completeEmail(pendingToken: string, email: string): Promise<LineLoginSuccess> {
+  const APP_SLUG = import.meta.env.VITE_APP_SLUG || ''
+  const res = await fetch(`/api/v1/custom-app-oauth/${APP_SLUG}/oauth/complete-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pending_token: pendingToken, email }),
+  })
+
+  if (!res.ok) {
+    let msg = `補填 Email 失敗 (${res.status})`
+    try {
+      const data = await res.json()
+      msg = typeof data.detail === 'string' ? data.detail : msg
+    } catch { /* 空 body */ }
+    throw new Error(msg)
+  }
+
+  const data = await res.json()
+  return { needs_email: false, ...data }
+}
+
