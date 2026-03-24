@@ -24,6 +24,19 @@ C:\Users\User\.gemini\antigravity\brain\0efb956e-f044-4f84-ba4d-1ba37d0ca4e4\sta
 * **解法**：專案上線前，**必須手動 SSH 進入 VM 建立各個 `.env`** 甚至先放入 `touch .env` 假檔。若 `.env` 為空，Node/Vite 編譯仍能過，但執行時可能會缺少 API Token。
 
 ### ⚠️ 地雷 4：首次 `git fetch` 的 SSH Host Key 互動審查
-* **現象**：GitHub Action 嘗試拉取私有庫時報錯 `Host key verification failed. fatal: Could not read from remote repository.`
+* **現象**：GitHub Action 嘗試拉取私有庫時報錯 `Host key verification failed. fatal: Could not read from remote remote repository.`
 * **原因**：若該 VM 過去從未連線過 GitHub，Git 背景作業會被卡在詢問 `Are you sure you want to continue connecting (yes/no)?` 上。
 * **解法**：在腳本裡，首次指令強制加上金鑰信任：`GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git fetch origin main`。
+
+### ⚠️ 地雷 5：多專案 GitHub SSH 金鑰衝突（Permission denied）
+* **現象**：在已部署過 A 專案的 VM 上部署 B 專案時，出現 `git@github.com: Permission denied (publickey)`，即便已加入 Deploy Key。
+* **原因**：GitHub 規定「同一把 Deploy Key 不能放在兩個不同的 Repo」。若 VM 共用一把 key 或預設連線 `git@github.com` 被綁死在 A 專案，則存取 B 專案會失敗。
+* **解法**：為每個專案產生獨立的金鑰（例如 `ssh-keygen -t ed25519 -f ~/.ssh/b-project-deploy`），並在 VM 的 `~/.ssh/config` 內使用 **SSH Host Aliases** 分流：
+  ```ssh
+  Host github.com-b-project
+    HostName github.com
+    IdentityFile ~/.ssh/b-project-deploy
+    StrictHostKeyChecking no
+  ```
+  最後將專案的 Git Remote URL 指向該 Alias：
+  `git remote set-url origin git@github.com-b-project:<你的帳號>/<B專案>.git`
