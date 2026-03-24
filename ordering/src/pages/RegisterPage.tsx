@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { register } from '../api/auth'
 import { useAuthStore } from '../store/useAuthStore'
+import { ensureCustomerForCurrentUser } from '../api/customerSync'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -22,7 +23,9 @@ export default function RegisterPage() {
     setError('')
     try {
       const res = await register(email, password, displayName)
-      setAuth(res.access_token, res.refresh_token, res.user, res.expires_in, res.customer_id)
+      setAuth(res.access_token, res.refresh_token, res.user, res.expires_in)
+      // 非同步同步 Customer（不阻塞導航）
+      ensureCustomerForCurrentUser()
       navigate('/order')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '註冊失敗')

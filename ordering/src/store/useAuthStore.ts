@@ -13,6 +13,7 @@ interface AuthState {
   customerId: string | null
   isLoggedIn: boolean
   setAuth: (token: string, refreshToken: string, user: AuthUser, expiresInSeconds: number, customerId?: string | null) => void
+  setCustomerId: (customerId: string) => void
   logout: () => void
 }
 
@@ -40,6 +41,17 @@ export const useAuthStore = create<AuthState>((set) => ({
     const expiresAt = Date.now() + expiresInSeconds * 1000
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ token, refreshToken, user, expiresAt, customerId: customerId || null }))
     set({ token, refreshToken, user, expiresAt, customerId: customerId || null, isLoggedIn: true })
+  },
+
+  setCustomerId: (customerId) => {
+    // 更新 state 並同步 localStorage
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const data = JSON.parse(raw)
+      data.customerId = customerId
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    }
+    set({ customerId })
   },
 
   logout: () => {

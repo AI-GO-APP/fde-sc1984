@@ -6,6 +6,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { verifyState, exchangeLineCode } from '../api/lineAuth'
 import { useAuthStore } from '../store/useAuthStore'
+import { ensureCustomerForCurrentUser } from '../api/customerSync'
 
 export default function LineCallbackPage() {
   const navigate = useNavigate()
@@ -50,7 +51,9 @@ export default function LineCallbackPage() {
         // Exchange the code for app tokens via backend
         const redirectUri = import.meta.env.VITE_LINE_CALLBACK_URL || `${window.location.origin}/auth/line/callback`
         const res = await exchangeLineCode(code, redirectUri)
-        setAuth(res.access_token, res.refresh_token, res.user, res.expires_in, res.customer_id)
+        setAuth(res.access_token, res.refresh_token, res.user, res.expires_in)
+        // 非同步同步 Customer（不阻塞導航）
+        ensureCustomerForCurrentUser()
         navigate('/order', { replace: true })
       } catch (err: unknown) {
         setStatus('error')
