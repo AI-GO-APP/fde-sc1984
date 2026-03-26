@@ -3,7 +3,7 @@
  *
  * 支援完整 CRUD 操作：
  * - GET    /{table_name}           → 查詢
- * - POST   /{table_name}/query     → 進階查詢（filters/search/order_by）
+ * - POST   /{table_name}/query     → 進階查詢（filters/search/order_by/select_columns）
  * - POST   /{table_name}           → 新增記錄
  * - PATCH  /{table_name}/{row_id}  → 更新記錄
  * - DELETE /{table_name}/{row_id}  → 刪除記錄
@@ -19,22 +19,23 @@ export interface RawProductTemplate {
   id: string
   name: string
   categ_id: string | null
-  standard_price: number
   list_price: number
   default_code: string | null
-  type: string
-  description: string | null
-  barcode: string | null
-  sale_ok: boolean
-  active: boolean
   uom_id: string | null
+  // 以下欄位只在需要時查詢，首屏不載入
+  standard_price?: number
+  type?: string
+  description?: string | null
+  barcode?: string | null
+  sale_ok?: boolean
+  active?: boolean
 }
 
 export interface RawProductCategory {
   id: string
   name: string
   parent_id: string | null
-  code: string | null
+  code?: string | null
 }
 
 export interface RawCustomer {
@@ -118,34 +119,70 @@ async function fetchProxy<T>(
   }
 }
 
-// --- Product / Category / Customer (READ) ---
+// --- 優化後的產品/分類查詢 ---
+
+/** 首屏需要的產品欄位（精簡 payload） */
+const PRODUCT_SELECT_COLUMNS = ['id', 'name', 'categ_id', 'list_price', 'default_code', 'uom_id']
+const CATEGORY_SELECT_COLUMNS = ['id', 'name', 'parent_id']
 
 /**
- * 自動分頁載入 — 循環取完所有資料，不受 API 預設 100 筆限制
+ * 使用 POST query API 載入產品
+ * - 伺服器端過濾 sale_ok=true, active=true
+ * - 只回傳首屏需要的欄位
+ * - 並行分頁載入（500 筆/頁）
  */
-async function fetchAllPages<T>(endpoint: string, pageSize = 200): Promise<T[]> {
-  let all: T[] = []
-  let offset = 0
+export async function fetchProductTemplates(): Promise<RawProductTemplate[]> {
+  const PAGE_SIZE = 500
 
-  while (true) {
-    const page = await fetchProxy<T[]>(
-      `${endpoint}?limit=${pageSize}&offset=${offset}`,
+  // 第一頁先載入
+  const firstPage = await fetchProxy<RawProductTemplate[]>('product_templates/query', 'POST', {
+    filters: [
+      { column: 'sale_ok', op: 'eq', value: true },
+      { column: 'active', op: 'eq', value: true },
+    ],
+    select_columns: PRODUCT_SELECT_COLUMNS,
+    limit: PAGE_SIZE,
+    offset: 0,
+  })
+
+  // 如果第一頁不滿，就是全部了
+  if (firstPage.length < PAGE_SIZE) return firstPage
+
+  // 估算總頁數，並行載入剩餘頁面
+  // 假設最多 4000 筆，需要額外 7 頁
+  const remainingPages = []
+  for (let offset = PAGE_SIZE; offset < 4000; offset += PAGE_SIZE) {
+    remainingPages.push(
+      fetchProxy<RawProductTemplate[]>('product_templates/query', 'POST', {
+        filters: [
+          { column: 'sale_ok', op: 'eq', value: true },
+          { column: 'active', op: 'eq', value: true },
+        ],
+        select_columns: PRODUCT_SELECT_COLUMNS,
+        limit: PAGE_SIZE,
+        offset,
+      })
     )
+  }
+
+  const results = await Promise.all(remainingPages)
+  let all = firstPage
+  for (const page of results) {
     all = all.concat(page)
-    if (page.length < pageSize) break // 不足一頁 = 已到最後
-    offset += pageSize
+    if (page.length < PAGE_SIZE) break // 已到最後一頁
   }
 
   return all
 }
 
-export async function fetchProductTemplates(): Promise<RawProductTemplate[]> {
-  const data = await fetchAllPages<RawProductTemplate>('product_templates')
-  return data.filter(p => p.active !== false && p.sale_ok !== false)
-}
-
+/**
+ * 使用 POST query API 載入分類（精簡欄位）
+ */
 export async function fetchProductCategories(): Promise<RawProductCategory[]> {
-  return fetchAllPages<RawProductCategory>('product_categories')
+  return fetchProxy<RawProductCategory[]>('product_categories/query', 'POST', {
+    select_columns: CATEGORY_SELECT_COLUMNS,
+    limit: 200,
+  })
 }
 
 export async function fetchCustomers(): Promise<RawCustomer[]> {

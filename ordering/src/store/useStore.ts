@@ -1,11 +1,11 @@
 /**
  * 全域狀態管理 — Zustand Store
  *
- * 核心改動：
- * 1. products / categories 由 API 載入，全域共享
- * 2. submitOrder 改為 async，呼叫 API 建立 sale_order + sale_order_lines
- * 3. orders 由 API 載入（querySaleOrders）
- * 4. 保留 Admin 端功能（procurement, stock）以免影響
+ * 優化策略：
+ * 1. products / categories 由 POST query API 載入（伺服器端過濾 + 欄位精簡）
+ * 2. localStorage 快取（30 分鐘 TTL）— 二次載入即時渲染
+ * 3. submitOrder 改為 async，呼叫 API 建立 sale_order + sale_order_lines
+ * 4. orders 延遲載入 — 只在進入 /orders 時才觸發
  */
 import { create } from 'zustand'
 import { type Product, type Category } from '../data/mockData'
@@ -32,14 +32,45 @@ export interface CartItem {
   note: string
 }
 
-
-
 export interface ApiOrder {
   raw: RawSaleOrder
   lines: RawSaleOrderLine[]
 }
 
+// === LocalStorage 快取 ===
 
+const CACHE_KEY_PRODUCTS = 'cache_products'
+const CACHE_KEY_CATEGORIES = 'cache_categories'
+const CACHE_TTL = 30 * 60 * 1000 // 30 分鐘
+
+interface CacheEntry<T> {
+  data: T
+  timestamp: number
+}
+
+function getCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const entry: CacheEntry<T> = JSON.parse(raw)
+    if (Date.now() - entry.timestamp > CACHE_TTL) {
+      localStorage.removeItem(key)
+      return null
+    }
+    return entry.data
+  } catch {
+    return null
+  }
+}
+
+function setCache<T>(key: string, data: T): void {
+  try {
+    const entry: CacheEntry<T> = { data, timestamp: Date.now() }
+    localStorage.setItem(key, JSON.stringify(entry))
+  } catch {
+    // localStorage 容量不足時靜默失敗
+  }
+}
 
 // === Store ===
 
@@ -59,14 +90,12 @@ interface AppState {
   updateCartNote: (productId: string, note: string) => void
   clearCart: () => void
 
-  // 訂單（API）
+  // 訂單（API）— 延遲載入
   apiOrders: ApiOrder[]
   ordersLoading: boolean
   loadOrders: (offset?: number) => Promise<void>
   submitOrderAsync: (note: string) => Promise<string>
   submitError: string | null
-
-
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -78,20 +107,30 @@ export const useStore = create<AppState>((set, get) => ({
   productsLoadedAt: 0,
   loadProducts: async (force = false) => {
     const { productsLoadedAt, productsLoading } = get()
-    // 5 minutes TTL
+    // 5 分鐘記憶體 TTL
     if (!force && Date.now() - productsLoadedAt < 5 * 60 * 1000) return
     if (productsLoading) return
+
+    // 策略：先從 localStorage 快取立即渲染，再背景刷新
+    const cachedProds = getCache<Product[]>(CACHE_KEY_PRODUCTS)
+    const cachedCats = getCache<Category[]>(CACHE_KEY_CATEGORIES)
+    if (cachedProds && cachedCats && !force) {
+      set({
+        liveProducts: cachedProds,
+        liveCategories: cachedCats,
+        productsLoadedAt: Date.now(),
+      })
+      // 背景靜默刷新（不擋 UI）
+      refreshFromApi(set)
+      return
+    }
+
+    // 無快取或強制刷新：顯示 loading
     set({ productsLoading: true })
     try {
-      const [rawTemplates, rawCategories] = await Promise.all([
-        fetchProductTemplates(),
-        fetchProductCategories(),
-      ])
-      const cats = mapCategories(rawCategories)
-      const prods = mapProducts(rawTemplates, cats)
-      set({ liveProducts: prods, liveCategories: cats, productsLoadedAt: Date.now() })
+      await refreshFromApi(set)
     } catch (err) {
-      console.error('Failed to load products:', err)
+      console.error('載入產品失敗:', err)
     } finally {
       set({ productsLoading: false })
     }
@@ -121,7 +160,7 @@ export const useStore = create<AppState>((set, get) => ({
   })),
   clearCart: () => set({ cart: [] }),
 
-  // === API 訂單 ===
+  // === API 訂單（延遲載入） ===
   apiOrders: [],
   ordersLoading: false,
   submitError: null,
@@ -152,7 +191,7 @@ export const useStore = create<AppState>((set, get) => ({
         apiOrders: offset > 0 ? [...state.apiOrders, ...apiOrders] : apiOrders 
       }))
     } catch (err) {
-      console.error('Failed to load orders:', err)
+      console.error('載入訂單失敗:', err)
     } finally {
       set({ ordersLoading: false })
     }
@@ -204,3 +243,20 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 }))
+
+/** 從 API 載入產品並更新快取 */
+async function refreshFromApi(set: (partial: Partial<AppState>) => void): Promise<void> {
+  const [rawTemplates, rawCategories] = await Promise.all([
+    fetchProductTemplates(),
+    fetchProductCategories(),
+  ])
+  const cats = mapCategories(rawCategories)
+  const prods = mapProducts(rawTemplates, cats)
+
+  // 更新 store
+  set({ liveProducts: prods, liveCategories: cats, productsLoadedAt: Date.now(), productsLoading: false })
+
+  // 寫入 localStorage 快取
+  setCache(CACHE_KEY_PRODUCTS, prods)
+  setCache(CACHE_KEY_CATEGORIES, cats)
+}
