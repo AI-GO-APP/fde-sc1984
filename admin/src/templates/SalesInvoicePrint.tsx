@@ -4,6 +4,11 @@
  */
 import type { SalesInvoice } from '../api/sales'
 
+const statusLabel: Record<string, string> = {
+  draft: '待處理', pending: '待處理', confirm: '已確認',
+  allocated: '已分配', shipped: '已出貨', delivered: '已送達', done: '已送達',
+}
+
 interface Props {
   orders: SalesInvoice[]
 }
@@ -28,7 +33,7 @@ export default function SalesInvoicePrint({ orders }: Props) {
                 <div>單號: <strong>{order.erp_id}</strong></div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div>狀態: {order.status}</div>
+                <div>狀態: {statusLabel[order.status] || order.status}</div>
                 <div style={{ marginTop: '4pt', color: '#999', fontSize: '9pt' }}>
                   第 {idx + 1} 頁 / 共 {orders.length} 頁
                 </div>
@@ -49,7 +54,7 @@ export default function SalesInvoicePrint({ orders }: Props) {
                 {order.lines.map((line, i) => (
                   <tr key={i}>
                     <td>{i + 1}</td>
-                    <td>{line.metadata?.note || line.product_id}</td>
+                    <td>{line.metadata?.note || '未知商品'}</td>
                     <td className="num">{line.quantity.toFixed(2)}</td>
                     <td className="num">{line.unit_price > 0 ? line.unit_price.toFixed(1) : '-'}</td>
                     <td className="num bold">{line.subtotal > 0 ? `$${Math.round(line.subtotal).toLocaleString()}` : '-'}</td>

@@ -3,19 +3,23 @@
  * 使用 API 回傳的 PurchaseOrder 資料，不依賴 mockData
  */
 import type { PurchaseOrder } from '../api/purchase'
+import type { Product } from '../api/stock'
 
 interface Props {
   orders: PurchaseOrder[]
+  products?: Product[]
 }
 
-export default function PurchaseListPrint({ orders }: Props) {
+export default function PurchaseListPrint({ orders, products = [] }: Props) {
+  const getProductName = (productId: string) => products.find(p => p.id === productId)?.name || '未知商品'
+
   // 按產品彙總
   const summary = new Map<string, { name: string; totalQty: number; supplier: string; orderCount: number }>()
   for (const order of orders) {
     for (const line of order.lines) {
       const key = line.product_id
       const existing = summary.get(key) || {
-        name: line.product_id,
+        name: getProductName(line.product_id),
         totalQty: 0,
         supplier: order.supplier_id || '-',
         orderCount: 0,

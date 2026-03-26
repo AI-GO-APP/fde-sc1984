@@ -41,7 +41,7 @@ export default function DeliverySlipPrint({ orders }: Props) {
               {order.lines.map((line, i) => (
                 <tr key={i}>
                   <td>{i + 1}</td>
-                  <td>{line.metadata?.note || line.product_id}</td>
+                  <td>{line.metadata?.note || '未知商品'}</td>
                   <td className="num bold">{line.quantity.toFixed(2)}</td>
                   <td></td>
                   <td style={{ textAlign: 'center' }}><span className="print-checkbox"></span></td>

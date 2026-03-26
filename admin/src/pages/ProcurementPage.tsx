@@ -67,7 +67,7 @@ export default function ProcurementPage() {
     }
   }
 
-  const getSupplierName = (id: string) => id || 'General Supplier'
+  const getSupplierName = (id: string) => id || '未指定供應商'
   
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading procurements...</div>
 
@@ -151,8 +151,8 @@ export default function ProcurementPage() {
                             const prod = products.find(pp => pp.id === line.product_id)
                             return (
                               <tr key={idx} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                                <td className="py-2 px-2 text-gray-400 text-xs font-mono">{prod?.sku || line.product_id}</td>
-                                <td className="py-2 px-2 font-medium">{prod?.name || 'Unknown'}</td>
+                                <td className="py-2 px-2 text-gray-400 text-xs font-mono">{prod?.sku || '-'}</td>
+                                <td className="py-2 px-2 font-medium">{prod?.name || '未知商品'}</td>
                                 <td className="py-2 px-2 text-right text-gray-600">{line.quantity.toFixed(2)}</td>
                                 <td className="py-2 px-2 text-right">
                                   ${line.unit_price}

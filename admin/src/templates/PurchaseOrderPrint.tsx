@@ -3,12 +3,15 @@
  * 使用 API 回傳的 PurchaseOrder 資料，不依賴 mockData
  */
 import type { PurchaseOrder } from '../api/purchase'
+import type { Product } from '../api/stock'
 
 interface Props {
   orders: PurchaseOrder[]
+  products?: Product[]
 }
 
-export default function PurchaseOrderPrint({ orders }: Props) {
+export default function PurchaseOrderPrint({ orders, products = [] }: Props) {
+  const getProductName = (productId: string) => products.find(p => p.id === productId)?.name || '未知商品'
   // 按供應商分群
   const bySupplier = new Map<string, PurchaseOrder[]>()
   for (const o of orders) {
@@ -56,7 +59,7 @@ export default function PurchaseOrderPrint({ orders }: Props) {
                     <tr key={`${oi}-${li}`}>
                       <td>{oi * 100 + li + 1}</td>
                       <td style={{ fontFamily: 'monospace', fontSize: '9pt' }}>{o.erp_id}</td>
-                      <td>{l.product_id}</td>
+                      <td>{getProductName(l.product_id)}</td>
                       <td className="num">{l.quantity.toFixed(2)}</td>
                       <td className="num">{l.unit_price > 0 ? l.unit_price.toFixed(1) : '-'}</td>
                       <td className="num">{l.subtotal > 0 ? `$${Math.round(l.subtotal).toLocaleString()}` : '-'}</td>

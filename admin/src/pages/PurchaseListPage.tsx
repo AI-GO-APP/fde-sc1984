@@ -31,13 +31,13 @@ export default function PurchaseListPage() {
   }, [])
 
   // 暫時代替假資料中的 customers/suppliers
-  const getCustomerName = (id: string) => id || 'Unknown Customer'
-  const getSupplierName = (id: string) => id || 'Unknown Supplier'
+  const getCustomerName = (id: string) => id || '未知客戶'
+  const getSupplierName = (id: string) => id || '未知供應商'
 
   // 按客戶分群
   const customerGroups = new Map<string, SalesInvoice[]>()
   for (const order of draftOrders) {
-    const cid = order.customer_id || 'Unknown'
+    const cid = order.customer_id || '未知客戶'
     const list = customerGroups.get(cid) || []
     list.push(order)
     customerGroups.set(cid, list)
@@ -47,8 +47,8 @@ export default function PurchaseListPage() {
   const productSummary = new Map<string, { name: string; code: string; totalQty: number; unit: string; customerCount: number; supplierId: string }>()
   for (const order of draftOrders) {
     for (const line of order.lines) {
-      const p = products.find(pp => pp.id === line.product_id) || { name: 'Unknown', sku: line.product_id, uom_id: 'unit', supplierId: 'Unknown' }
-      const existing = productSummary.get(line.product_id) || { name: p.name, code: p.sku, totalQty: 0, unit: p.uom_id, customerCount: 0, supplierId: (p as any).supplierId || 'Unknown' }
+      const p = products.find(pp => pp.id === line.product_id) || { name: '未知', sku: '-', uom_id: '單位', supplierId: '未知' }
+      const existing = productSummary.get(line.product_id) || { name: p.name, code: p.sku, totalQty: 0, unit: p.uom_id, customerCount: 0, supplierId: (p as any).supplierId || '未知' }
       existing.totalQty = Math.round((existing.totalQty + line.quantity) * 100) / 100
       existing.customerCount++
       productSummary.set(line.product_id, existing)
@@ -139,7 +139,7 @@ export default function PurchaseListPage() {
                   </button>
                   {expanded && custOrders.map(order => (
                     <div key={order.id} className="border-t border-gray-100 px-4 py-3">
-                      <p className="text-xs text-gray-400 mb-2">{order.id} | {order.date} | 期望到貨: {order.metadata?.deliveryDate}</p>
+                      <p className="text-xs text-gray-400 mb-2">訂單 #{order.erp_id} | {order.date} | 期望到貨: {order.metadata?.deliveryDate}</p>
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-gray-400 text-xs">
@@ -152,7 +152,7 @@ export default function PurchaseListPage() {
                         </thead>
                         <tbody>
                           {order.lines.map((line, i) => {
-                            const prod = products.find(pp => pp.id === line.product_id) || { sku: line.product_id, name: 'Unknown', uom_id: 'unit' }
+                            const prod = products.find(pp => pp.id === line.product_id) || { sku: '-', name: '未知商品', uom_id: '單位' }
                             return (
                               <tr key={i} className="border-t border-gray-50">
                                 <td className="py-1.5 text-gray-400 text-xs font-mono">{prod.sku}</td>
@@ -245,10 +245,10 @@ export default function PurchaseListPage() {
 
       {/* 列印隱藏區 */}
       <PrintArea printRef={poRef}>
-        <PurchaseOrderPrint orders={procurementItems as any} />
+        <PurchaseOrderPrint orders={procurementItems as any} products={products} />
       </PrintArea>
       <PrintArea printRef={listRef}>
-        <PurchaseListPrint orders={draftOrders as any} />
+        <PurchaseListPrint orders={draftOrders as any} products={products} />
       </PrintArea>
     </div>
   )

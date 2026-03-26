@@ -68,7 +68,7 @@ export default function DeliveryPage() {
 
   const customerGroups = new Map<string, typeof paged>()
   for (const order of paged) {
-    const cid = order.customer_id || 'Unknown'
+    const cid = order.customer_id || '未知客戶'
     const list = customerGroups.get(cid) || []
     list.push(order)
     customerGroups.set(cid, list)
@@ -155,7 +155,7 @@ export default function DeliveryPage() {
                           <div className="flex items-center gap-2">
                             <input type="checkbox" checked={selectedOrders.has(order.id)} onChange={() => toggleOrderSelect(order.id)} className="w-4 h-4 accent-primary bg-white" />
                             <div>
-                              <p className="text-sm font-medium">{order.id}</p>
+                              <p className="text-sm font-medium">訂單 #{order.erp_id}</p>
                               <p className="text-xs text-gray-400">{order.lines.length} 個品項</p>
                             </div>
                           </div>
