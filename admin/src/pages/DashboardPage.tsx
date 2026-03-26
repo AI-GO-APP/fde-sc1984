@@ -23,9 +23,9 @@ export default function DashboardPage() {
   const steps = [
     { step: '1', label: '銷售訂單', desc: `${stats?.totalSalesOrders || 0} 筆訂單`, href: '/sales-orders', count: stats?.totalSalesOrders || 0 },
     { step: '2', label: '採購定價', desc: `${stats?.totalPurchaseOrders || 0} 個品項`, href: '/procurement', count: stats?.totalPurchaseOrders || 0 },
-    { step: '3', label: '待出貨', desc: `${stats?.pendingShipments || 0} 待出貨`, href: '/delivery', count: stats?.pendingShipments || 0 },
-    { step: '4', label: '待收貨', desc: `${stats?.pendingReceives || 0} 待收貨`, href: '/purchase-list', count: stats?.pendingReceives || 0 },
-    { step: '5', label: '庫存', desc: `查看庫存`, href: '/stock', count: 0 },
+    { step: '3', label: '庫存', desc: '查看當日庫存', href: '/stock', count: 0 },
+    { step: '4', label: '待出貨', desc: `${stats?.pendingShipments || 0} 待出貨`, href: '/delivery', count: stats?.pendingShipments || 0 },
+    { step: '5', label: '待收貨', desc: `${stats?.pendingReceives || 0} 待收貨`, href: '/purchase-list', count: stats?.pendingReceives || 0 },
   ]
 
   if (loading) {
