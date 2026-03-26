@@ -1,6 +1,7 @@
 /**
  * C3 購物車 / 下單確認頁
  * 串接真實 API — 建立 sale_order + sale_order_lines
+ * 優化：分步驟進度回饋、Dialog loading 狀態
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -16,6 +17,7 @@ export default function CartPage() {
   const [submitted, setSubmitted] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitStep, setSubmitStep] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // 用 LIVE 產品資料（若有），否則 fallback 至 productId
@@ -30,14 +32,18 @@ export default function CartPage() {
   const handleSubmit = async () => {
     setSubmitting(true)
     setError(null)
+    setSubmitStep('建立訂單中...')
     try {
-      await submitOrderAsync(orderNote)
+      await submitOrderAsync(orderNote, (step) => setSubmitStep(step))
+      setSubmitStep('完成！')
       setSubmitted(true)
       setShowConfirm(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : '下單失敗')
+      setShowConfirm(false)
     } finally {
       setSubmitting(false)
+      setSubmitStep('')
     }
   }
 
@@ -135,10 +141,11 @@ export default function CartPage() {
 
       <ConfirmDialog
         open={showConfirm}
-        title="確認送出訂單？"
-        message={`將送出 ${cart.length} 項品項。送出後訂單將寫入系統。`}
+        title={submitting ? '訂單送出中' : '確認送出訂單？'}
+        message={submitting ? submitStep : `將送出 ${cart.length} 項品項。送出後訂單將寫入系統。`}
         confirmText="確認送出"
         variant="info"
+        loading={submitting}
         onConfirm={handleSubmit}
         onCancel={() => setShowConfirm(false)}
       />

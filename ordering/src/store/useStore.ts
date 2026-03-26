@@ -94,7 +94,7 @@ interface AppState {
   apiOrders: ApiOrder[]
   ordersLoading: boolean
   loadOrders: (offset?: number) => Promise<void>
-  submitOrderAsync: (note: string) => Promise<string>
+  submitOrderAsync: (note: string, onProgress?: (step: string) => void) => Promise<string>
   submitError: string | null
 }
 
@@ -197,13 +197,14 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  submitOrderAsync: async (note) => {
+  submitOrderAsync: async (note, onProgress) => {
     const { cart, liveProducts, clearCart } = get()
     if (cart.length === 0) throw new Error('購物車是空的')
 
     set({ submitError: null })
     try {
       // 1. 建立 sale_order
+      onProgress?.('建立訂單中...')
       const customerId = useAuthStore.getState().customerId
       const orderRes = await createSaleOrder({
         customer_id: customerId || undefined,
@@ -213,8 +214,10 @@ export const useStore = create<AppState>((set, get) => ({
       })
       const orderId = orderRes.id
 
-      // 2. 建立每一行 sale_order_line
+      // 2. 逐一建立 sale_order_line（回報進度）
       try {
+        const total = cart.length
+        let done = 0
         const linePromises = cart.map(item => {
           const product = liveProducts.find(p => p.id === item.productId)
           return createSaleOrderLine({
@@ -222,18 +225,24 @@ export const useStore = create<AppState>((set, get) => ({
             product_template_id: item.productId,
             name: product ? `${product.name}${item.note ? ` (${item.note})` : ''}` : item.productId,
             product_uom_qty: item.qty,
+          }).then(res => {
+            done++
+            onProgress?.(`上傳品項 (${done}/${total})...`)
+            return res
           })
         })
         await Promise.all(linePromises)
       } catch (lineErr) {
         // 部分失敗回滾
+        onProgress?.('建立失敗，正在回復...')
         await deleteSaleOrder(orderId).catch(console.error)
         throw lineErr
       }
 
-      // 3. 清空購物車並重新載入訂單
+      // 3. 清空購物車，背景刷新訂單（不阻塞）
+      onProgress?.('完成！')
       clearCart()
-      get().loadOrders()
+      get().loadOrders() // fire-and-forget，不 await
 
       return orderId
     } catch (err) {
