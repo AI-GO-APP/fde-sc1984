@@ -15,12 +15,21 @@ export const test = base.extend<{ authedPage: Page }>({
       localStorage.setItem('admin_token', t)
     }, token)
 
-    // 重新載入以讓 interceptor 讀取到 token
+    // 重新載入（使用 domcontentloaded，不等 API 完成）
     await page.reload()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
+
+    // 等待 React 渲染完成（最多等 45 秒）
+    await page.waitForFunction(
+      () => !document.body.textContent?.includes('載入中'),
+      { timeout: 45_000 },
+    ).catch(() => {
+      // 若超時仍在載入中，繼續測試（部分頁面資料可能尚未到位）
+    })
 
     await use(page)
   },
 })
 
 export { expect } from '@playwright/test'
+

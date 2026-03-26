@@ -9,7 +9,7 @@ import { test, expect } from '../fixtures/test-fixtures'
 test.describe('Sales Orders', () => {
   test.beforeEach(async ({ authedPage }) => {
     await authedPage.goto('/sales-orders')
-    await authedPage.waitForLoadState('networkidle')
+    await authedPage.waitForLoadState('domcontentloaded')
   })
 
   // --- 頁面載入 ---

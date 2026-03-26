@@ -7,7 +7,7 @@ import { test, expect } from '../fixtures/test-fixtures'
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ authedPage }) => {
     await authedPage.goto('/')
-    await authedPage.waitForLoadState('networkidle')
+    await authedPage.waitForLoadState('domcontentloaded')
   })
 
   // --- 正常流 ---
@@ -76,7 +76,7 @@ test.describe('Dashboard', () => {
   test('1.10 API 失敗時顯示 fallback (0 值)', async ({ page }) => {
     // 不注入 token，模擬 401
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     // Dashboard 裡有 try/catch fallback，應不崩潰
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
@@ -88,7 +88,9 @@ test.describe('Dashboard', () => {
   })
 
   test('1.12 步驟順序：銷售→採購→庫存→出貨→收貨', async ({ authedPage }) => {
-    const buttons = authedPage.locator('.grid button')
+    // Dashboard 載入所有產品可能很慢，需等待 workflow grid 渲染
+    await authedPage.waitForSelector('[data-testid="workflow-steps"]', { timeout: 55_000 })
+    const buttons = authedPage.locator('[data-testid="workflow-steps"] button')
     const count = await buttons.count()
     expect(count).toBe(5)
     const labels = []

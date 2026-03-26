@@ -56,7 +56,7 @@ export default function DashboardPage() {
         </div>
         <div className="bg-white rounded-xl border border-gray-100 p-6">
           <h2 className="font-bold text-gray-900 mb-4">作業流程</h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3" data-testid="workflow-steps">
             {steps.map(s => (
               <button key={s.label} onClick={() => navigate(s.href)} className="rounded-xl border border-gray-100 bg-white hover:bg-gray-50 p-4 text-left transition-colors">
                 <div className="flex items-center justify-between">

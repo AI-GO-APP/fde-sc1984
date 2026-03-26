@@ -6,7 +6,7 @@ export default defineConfig({
   retries: 1,
   workers: 1,
   reporter: [['html', { open: 'never' }], ['list']],
-  timeout: 30_000,
+  timeout: 60_000,            // 60 秒（線上 API 載入較慢）
   use: {
     baseURL: 'http://localhost:5174',
     screenshot: 'only-on-failure',
@@ -16,7 +16,7 @@ export default defineConfig({
     command: 'npm run dev',
     port: 5174,
     reuseExistingServer: true,
-    timeout: 15_000,
+    timeout: 30_000,
   },
   globalSetup: './global-setup.ts',
 })

@@ -7,7 +7,7 @@ import { test, expect } from '../fixtures/test-fixtures'
 test.describe('Procurement (採購定價與入庫)', () => {
   test.beforeEach(async ({ authedPage }) => {
     await authedPage.goto('/procurement')
-    await authedPage.waitForLoadState('networkidle')
+    await authedPage.waitForLoadState('domcontentloaded')
   })
 
   // --- 正常流 ---

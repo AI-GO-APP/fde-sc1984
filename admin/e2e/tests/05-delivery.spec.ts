@@ -7,7 +7,7 @@ import { test, expect } from '../fixtures/test-fixtures'
 test.describe('Delivery (出貨管理)', () => {
   test.beforeEach(async ({ authedPage }) => {
     await authedPage.goto('/delivery')
-    await authedPage.waitForLoadState('networkidle')
+    await authedPage.waitForLoadState('domcontentloaded')
   })
 
   // --- 正常流 ---

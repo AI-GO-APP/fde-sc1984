@@ -9,7 +9,7 @@ test.describe('Edge Cases & Robustness', () => {
   test('8.1 無 Token → 頁面不崩潰', async ({ page }) => {
     // 不使用 authedPage，故意不注入 Token
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     // Dashboard 的 try/catch 應 fallback
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
@@ -23,7 +23,7 @@ test.describe('Edge Cases & Robustness', () => {
       localStorage.setItem('admin_token', 'expired_invalid_token_xxxxx')
     })
     await page.reload()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
   })
@@ -41,7 +41,7 @@ test.describe('Edge Cases & Robustness', () => {
     })
 
     await page.goto('/sales-orders')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     // 應顯示空列表而非崩潰
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
@@ -80,7 +80,7 @@ test.describe('Edge Cases & Robustness', () => {
     await page.goto('/stock')
     await page.goto('/')
     
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
   })
@@ -112,7 +112,7 @@ test.describe('Edge Cases & Robustness', () => {
     })
 
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     // Dashboard 有 fallback
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
@@ -124,7 +124,7 @@ test.describe('Edge Cases & Robustness', () => {
       localStorage.setItem('admin_token', 'test')
     })
     await page.reload()
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
     
     await page.goto('/stock')
     await page.waitForLoadState('domcontentloaded')

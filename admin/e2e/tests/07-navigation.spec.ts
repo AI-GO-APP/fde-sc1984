@@ -9,7 +9,7 @@ test.describe('Navigation', () => {
     const pages = ['/sales-orders', '/procurement', '/delivery']
     for (const path of pages) {
       await authedPage.goto(path)
-      await authedPage.waitForLoadState('networkidle')
+      await authedPage.waitForLoadState('domcontentloaded')
       // 點擊返回
       await authedPage.locator('header button').first().click()
       await expect(authedPage).toHaveURL('/')
