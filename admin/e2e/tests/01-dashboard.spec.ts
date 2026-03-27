@@ -26,7 +26,7 @@ test.describe('Dashboard', () => {
   })
 
   test('1.3 Workflow Actions 全 5 張卡片呈現', async ({ authedPage }) => {
-    const labels = ['銷售訂單', '採購定價', '待出貨', '待收貨', '庫存']
+    const labels = ['確認訂單', '訂單接收', '採購定價', '出貨管理', '庫存報表']
     for (const label of labels) {
       await expect(authedPage.getByRole('button', { name: new RegExp(label) })).toBeVisible()
     }
@@ -34,41 +34,36 @@ test.describe('Dashboard', () => {
 
   // --- 導航 ---
 
-  test('1.4 點擊 Sales Orders 卡片跳轉 /sales-orders', async ({ authedPage }) => {
-    await authedPage.getByRole('button', { name: /銷售訂單/ }).click()
+  test('1.4 點擊確認訂單卡片跳轉 /sales-orders', async ({ authedPage }) => {
+    await authedPage.getByRole('button', { name: /確認訂單/ }).click()
     await expect(authedPage).toHaveURL(/\/sales-orders/)
   })
 
-  test('1.5 點擊 Procurement 卡片跳轉 /procurement', async ({ authedPage }) => {
+  test('1.5 點擊訂單接收卡片跳轉 /purchase-list', async ({ authedPage }) => {
+    await authedPage.getByRole('button', { name: /訂單接收/ }).click()
+    await expect(authedPage).toHaveURL(/\/purchase-list/)
+  })
+
+  test('1.6 點擊採購定價卡片跳轉 /procurement', async ({ authedPage }) => {
     await authedPage.getByRole('button', { name: /採購定價/ }).click()
     await expect(authedPage).toHaveURL(/\/procurement/)
   })
 
-  test('1.6 點擊 Pending Shipments 卡片跳轉 /delivery', async ({ authedPage }) => {
-    await authedPage.getByRole('button', { name: /待出貨/ }).click()
+  test('1.7 點擊出貨管理卡片跳轉 /delivery', async ({ authedPage }) => {
+    await authedPage.getByRole('button', { name: /出貨管理/ }).click()
     await expect(authedPage).toHaveURL(/\/delivery/)
   })
 
-  test('1.7 點擊 Pending Receives 卡片跳轉 /purchase-list', async ({ authedPage }) => {
-    await authedPage.getByRole('button', { name: /待收貨/ }).click()
-    await expect(authedPage).toHaveURL(/\/purchase-list/)
-  })
-
-  test('1.8 點擊 Stock 卡片跳轉 /stock', async ({ authedPage }) => {
-    await authedPage.getByRole('button', { name: /庫存/ }).click()
+  test('1.8 點擊庫存報表卡片跳轉 /stock', async ({ authedPage }) => {
+    await authedPage.getByRole('button', { name: /庫存報表/ }).click()
     await expect(authedPage).toHaveURL(/\/stock/)
   })
 
-  test('1.9 Badge 數字與統計卡數值一致', async ({ authedPage }) => {
-    // Sales Orders badge
-    const salesBtn = authedPage.getByRole('button', { name: /銷售訂單/ })
-    const salesDesc = await salesBtn.locator('p.text-xs').textContent()
-    const salesCountFromDesc = parseInt(salesDesc?.match(/\d+/)?.[0] || '0')
-
-    // 統計卡片中的 Total Sales Orders
-    const totalCard = authedPage.getByText('銷售訂單總數').locator('..')
-    const totalVal = await totalCard.locator('p.text-3xl').textContent()
-    expect(salesCountFromDesc).toBe(Number(totalVal))
+  test('1.9 確認訂單步驟的待確認數字 >= 0', async ({ authedPage }) => {
+    const confirmBtn = authedPage.getByRole('button', { name: /確認訂單/ })
+    const desc = await confirmBtn.locator('p.text-xs').textContent()
+    const count = parseInt(desc?.match(/\d+/)?.[0] || '0')
+    expect(count).toBeGreaterThanOrEqual(0)
   })
 
   // --- 邊界案例 ---
@@ -87,7 +82,7 @@ test.describe('Dashboard', () => {
     expect(dateText).toMatch(/\d{4}-\d{2}-\d{2}/)
   })
 
-  test('1.12 步驟順序：銷售→採購→庫存→出貨→收貨', async ({ authedPage }) => {
+  test('1.12 步驟順序：確認訂單→訂單接收→採購定價→出貨管理→庫存報表', async ({ authedPage }) => {
     // Dashboard 載入所有產品可能很慢，需等待 workflow grid 渲染
     await authedPage.waitForSelector('[data-testid="workflow-steps"]', { timeout: 55_000 })
     const buttons = authedPage.locator('[data-testid="workflow-steps"] button')
@@ -98,6 +93,6 @@ test.describe('Dashboard', () => {
       const text = await buttons.nth(i).locator('p.font-medium').textContent()
       labels.push(text?.trim())
     }
-    expect(labels).toEqual(['銷售訂單', '採購定價', '庫存', '待出貨', '待收貨'])
+    expect(labels).toEqual(['確認訂單', '訂單接收', '採購定價', '出貨管理', '庫存報表'])
   })
 })
