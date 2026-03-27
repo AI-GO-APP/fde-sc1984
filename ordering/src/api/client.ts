@@ -267,7 +267,13 @@ export function mapCategories(raw: RawProductCategory[]): Category[] {
 }
 
 export function mapProducts(raw: RawProductTemplate[], categories: Category[]): Product[] {
-  return raw.filter(p => p.name).map(p => ({
+  // 防禦性去重：API 可能因 JOIN 回傳重複的 product template
+  const seen = new Set<string>()
+  return raw.filter(p => {
+    if (!p.name || seen.has(p.id)) return false
+    seen.add(p.id)
+    return true
+  }).map(p => ({
     id: p.id,
     name: p.name,
     categoryId: p.categ_id || (categories.length > 0 ? categories[0].id : 'unknown'),
