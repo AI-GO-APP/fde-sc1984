@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   ordering:
     build:
       context: ./ordering
     ports:
-      - "127.0.0.1:3001:3001"
+      - "${ORDERING_PORT:-3001}:3001"
     restart: always
     env_file:
       - ./ordering/.env
@@ -15,7 +13,7 @@ services:
     build:
       context: ./admin
     ports:
-      - "127.0.0.1:3002:80"
+      - "${ADMIN_PORT:-3002}:80"
     restart: always
     env_file:
       - ./admin/.env

@@ -30,3 +30,8 @@ Thumbs.db
 
 # 暫存
 展示/
+
+# Deploy keys & 運維腳本
+*.pub
+*.pem
+*.key

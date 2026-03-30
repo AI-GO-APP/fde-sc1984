@@ -4,5 +4,13 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { port: 5174 },
+  server: { 
+    port: 5174,
+    proxy: {
+      '/api/v1': {
+        target: 'https://ai-go.app',
+        changeOrigin: true,
+      }
+    }
+  },
 })
