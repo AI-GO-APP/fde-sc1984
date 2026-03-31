@@ -4,19 +4,25 @@ services:
   ordering:
     build:
       context: ./ordering
+      args:
+        # Vite 環境變數（build-time 注入前端 JS bundle）
+        VITE_API_BASE: ${VITE_ORDERING_API_BASE:-/api/v1/open/proxy}
+        VITE_API_KEY: ${ORDERING_API_KEY}
+        VITE_APP_SLUG: ${ORDERING_APP_SLUG}
+        VITE_AUTH_BASE: ${VITE_ORDERING_AUTH_BASE:-/api/v1/custom-app-auth}
+        VITE_LINE_CHANNEL_ID: ${LINE_CHANNEL_ID}
+        VITE_LINE_CALLBACK_URL: ${ORDERING_LINE_CALLBACK_URL}
     ports:
       - "${ORDERING_PORT:-3001}:3001"
     restart: always
     env_file:
-      - ./ordering/.env
       - ./ordering/backend/.env
 
   admin:
     build:
       context: ./admin
       args:
-        # Vite 環境變數（build-time 注入）
-        # docker-compose 會從專案根目錄的 .env 讀取這些變數
+        # Vite 環境變數（build-time 注入前端 JS bundle）
         VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
         VITE_API_KEY: ${VITE_API_KEY}
         VITE_APP_SLUG: ${VITE_APP_SLUG}
