@@ -1,12 +1,12 @@
 /**
  * Admin 全域狀態管理 — Zustand Store
  *
- * 三大資料來源：銷售訂單、產品、採購單
+ * 資料來源：銷售訂單、產品、採購單、司機
  * 含 5 分鐘 TTL 快取
  */
 import { create } from 'zustand'
 import { getSaleOrders, type SaleOrder } from '../api/sales'
-import { getProducts, type Product } from '../api/stock'
+import { getProducts, getDrivers, type Product } from '../api/stock'
 import { getPurchaseOrders, type PurchaseOrder } from '../api/purchase'
 
 const TTL = 5 * 60 * 1000
@@ -26,6 +26,10 @@ interface AdminState {
   purchasesLoadedAt: number
   purchasesLoading: boolean
   loadPurchases: (force?: boolean) => Promise<void>
+
+  drivers: Array<{ id: string; name: string }>
+  driversLoadedAt: number
+  loadDrivers: (force?: boolean) => Promise<void>
 
   loadAll: (force?: boolean) => Promise<void>
 }
@@ -85,8 +89,21 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     }
   },
 
+  drivers: [],
+  driversLoadedAt: 0,
+  loadDrivers: async (force = false) => {
+    const { driversLoadedAt } = get()
+    if (!force && Date.now() - driversLoadedAt < TTL) return
+    try {
+      const data = await getDrivers()
+      set({ drivers: data, driversLoadedAt: Date.now() })
+    } catch (err) {
+      console.error('[store] 載入司機失敗:', err)
+    }
+  },
+
   loadAll: async (force = false) => {
-    const { loadSales, loadProducts, loadPurchases } = get()
-    await Promise.all([loadSales(force), loadProducts(force), loadPurchases(force)])
+    const { loadSales, loadProducts, loadPurchases, loadDrivers } = get()
+    await Promise.all([loadSales(force), loadProducts(force), loadPurchases(force), loadDrivers(force)])
   },
 }))
