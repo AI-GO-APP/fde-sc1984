@@ -1,27 +1,35 @@
 /**
- * Step 4: 出貨配送 — 逐筆銷售訂單出貨 (sale → done)
+ * Step 1: 確認訂單 — 逐筆確認 draft → sale
  */
 import { useState, useMemo, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
 import { updateSaleOrderState } from '../api/sales'
-import { isUUID } from '../utils/displayHelpers'
-import { shortId } from '../utils/displayHelpers'
-import ConfirmDialog from '../components/ConfirmDialog'
 import SearchInput from '../components/SearchInput'
 import StatusDropdown from '../components/StatusDropdown'
 import Pagination from '../components/Pagination'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { shortId } from '../utils/displayHelpers'
 
 const stateOptions = [
   { value: 'all', label: '全部' },
-  { value: 'sale', label: '待出貨' },
-  { value: 'done', label: '已送達' },
+  { value: 'draft', label: '待確認' },
+  { value: 'sale', label: '已確認' },
+  { value: 'done', label: '已完成' },
 ]
+
+const stateConfig: Record<string, { label: string; color: string }> = {
+  draft: { label: '待確認', color: 'bg-blue-100 text-blue-700' },
+  sent:  { label: '已報價', color: 'bg-yellow-100 text-yellow-700' },
+  sale:  { label: '已確認', color: 'bg-green-100 text-green-700' },
+  done:  { label: '已完成', color: 'bg-gray-100 text-gray-500' },
+  cancel:{ label: '已取消', color: 'bg-red-100 text-red-500' },
+}
 
 const PAGE_SIZE = 10
 
-export default function DeliveryPage() {
-  const { saleOrders, products, loadSales, loadProducts } = useAdminStore()
+export default function OrdersPage() {
+  const { saleOrders, loadSales } = useAdminStore()
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
@@ -29,41 +37,28 @@ export default function DeliveryPage() {
   const [page, setPage] = useState(1)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  useEffect(() => {
-    Promise.all([loadSales(), loadProducts()]).then(() => setLoading(false))
-  }, [])
+  useEffect(() => { loadSales().then(() => setLoading(false)) }, [])
 
-  // 產品名稱解析：line.name → product_templates 查找 → fallback
-  const resolveProductName = (line: { name: string; productTemplateId: string }) => {
-    if (line.name && !isUUID(line.name)) return line.name
-    if (line.productTemplateId) {
-      const p = products.find(p => p.id === line.productTemplateId)
-      if (p?.name) return p.name
-    }
-    return '未知商品'
-  }
-
-  const deliverableOrders = useMemo(() => {
-    let list = saleOrders.filter(o => o.state === 'sale' || o.state === 'done')
+  const filtered = useMemo(() => {
+    let list = saleOrders
     if (filter !== 'all') list = list.filter(o => o.state === filter)
     if (search.trim()) {
       const q = search.toLowerCase()
       list = list.filter(o =>
-        o.customerName.toLowerCase().includes(q) ||
-        shortId(o.name).toLowerCase().includes(q),
+        shortId(o.name).toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q),
       )
     }
-    // 待出貨排前面
-    return list.sort((a, b) => (a.state === 'sale' ? -1 : 1) - (b.state === 'sale' ? -1 : 1))
+    return [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [saleOrders, filter, search])
 
-  const totalPages = Math.ceil(deliverableOrders.length / PAGE_SIZE)
-  const paged = deliverableOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   const handleConfirm = async () => {
     if (!confirmId) return
     try {
-      await updateSaleOrderState(confirmId, 'done')
+      await updateSaleOrderState(confirmId, 'sale')
       await loadSales(true)
     } finally {
       setConfirmId(null)
@@ -81,8 +76,8 @@ export default function DeliveryPage() {
           <div className="flex items-center gap-3">
             <BackButton />
             <div>
-              <h1 className="text-xl font-bold text-gray-900">出貨配送</h1>
-              <p className="text-sm text-gray-400">{saleOrders.filter(o => o.state === 'sale').length} 筆待出貨</p>
+              <h1 className="text-xl font-bold text-gray-900">確認訂單</h1>
+              <p className="text-sm text-gray-400">{filtered.length} 筆訂單</p>
             </div>
           </div>
         </div>
@@ -95,11 +90,11 @@ export default function DeliveryPage() {
       <div className="p-6 max-w-5xl mx-auto space-y-3">
         {paged.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
-            {search || filter !== 'all' ? '無符合的訂單' : '目前沒有待出貨訂單'}
+            {search || filter !== 'all' ? '無符合的訂單' : '尚無訂單'}
           </div>
         ) : paged.map(order => {
+          const config = stateConfig[order.state] || stateConfig.draft
           const isExpanded = expanded === order.id
-          const canDeliver = order.state === 'sale'
           return (
             <div key={order.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <button onClick={() => setExpanded(isExpanded ? null : order.id)}
@@ -107,17 +102,15 @@ export default function DeliveryPage() {
                 <div className="text-left">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-gray-900">{order.customerName}</p>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${canDeliver ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                      {canDeliver ? '待出貨' : '已送達'}
-                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.color}`}>{config.label}</span>
                   </div>
-                  <p className="text-sm text-gray-400">{shortId(order.name)} · {order.date} · {order.lines.length} 品項</p>
+                  <p className="text-sm text-gray-400">{shortId(order.name)} · {order.date} · {order.lines.length} 品項 · ${order.totalAmount.toLocaleString()}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {canDeliver && (
+                  {order.state === 'draft' && (
                     <button onClick={e => { e.stopPropagation(); setConfirmId(order.id) }}
                       className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
-                      確認出貨
+                      確認訂單
                     </button>
                   )}
                   <span className="text-gray-400 text-xl">{isExpanded ? '▾' : '▸'}</span>
@@ -125,13 +118,27 @@ export default function DeliveryPage() {
               </button>
               {isExpanded && (
                 <div className="border-t border-gray-100 px-4 py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {order.lines.map((line, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-gray-50 rounded text-xs text-gray-500">
-                        {resolveProductName(line)} x{line.quantity}
-                      </span>
-                    ))}
-                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-xs">
+                        <th className="py-1 text-left">品名</th>
+                        <th className="py-1 text-right">數量</th>
+                        <th className="py-1 text-right">單價</th>
+                        <th className="py-1 text-right">小計</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.lines.map(line => (
+                        <tr key={line.id} className="border-t border-gray-50">
+                          <td className="py-1.5 font-medium">{line.name}</td>
+                          <td className="py-1.5 text-right">{line.quantity}</td>
+                          <td className="py-1.5 text-right text-gray-500">${line.unitPrice}</td>
+                          <td className="py-1.5 text-right font-bold">${line.subtotal.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {order.note && <p className="text-xs text-gray-400 mt-2 bg-gray-50 px-2 py-1 rounded">📝 {order.note}</p>}
                 </div>
               )}
             </div>
@@ -143,9 +150,9 @@ export default function DeliveryPage() {
 
       <ConfirmDialog
         open={!!confirmId}
-        title="確認出貨？"
-        message={`訂單 ${shortId(confirmOrder?.name)}（${confirmOrder?.customerName}）將標記為「已送達」。此操作不可逆。`}
-        confirmText="確認出貨"
+        title="確認此訂單？"
+        message={`訂單 ${shortId(confirmOrder?.name)} 將標記為「已確認」。此操作不可逆，確認後訂單將進入採購流程。`}
+        confirmText="確認訂單"
         variant="warning"
         onConfirm={handleConfirm}
         onCancel={() => setConfirmId(null)}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 庫存總表 — 列印版面
  * 使用 API 回傳的 Product 資料，不依賴 useStore

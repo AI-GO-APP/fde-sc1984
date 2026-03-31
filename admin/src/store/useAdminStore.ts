@@ -1,42 +1,37 @@
 /**
  * Admin 全域狀態管理 — Zustand Store
  *
- * 集中管理三大資料來源（銷售訂單、產品、採購單），
- * 含 5 分鐘 TTL 快取，避免頁面切換時重複 API 呼叫。
+ * 三大資料來源：銷售訂單、產品、採購單
+ * 含 5 分鐘 TTL 快取
  */
 import { create } from 'zustand'
-import { getSalesInvoices, type SalesInvoice } from '../api/sales'
+import { getSaleOrders, type SaleOrder } from '../api/sales'
 import { getProducts, type Product } from '../api/stock'
 import { getPurchaseOrders, type PurchaseOrder } from '../api/purchase'
 
-const TTL = 5 * 60 * 1000 // 5 分鐘快取
+const TTL = 5 * 60 * 1000
 
 interface AdminState {
-  // 銷售訂單
-  salesOrders: SalesInvoice[]
+  saleOrders: SaleOrder[]
   salesLoadedAt: number
   salesLoading: boolean
   loadSales: (force?: boolean) => Promise<void>
 
-  // 產品
   products: Product[]
   productsLoadedAt: number
   productsLoading: boolean
   loadProducts: (force?: boolean) => Promise<void>
 
-  // 採購單
   purchaseOrders: PurchaseOrder[]
   purchasesLoadedAt: number
   purchasesLoading: boolean
   loadPurchases: (force?: boolean) => Promise<void>
 
-  // 一次載入全部（Dashboard / PurchaseList 用）
   loadAll: (force?: boolean) => Promise<void>
 }
 
 export const useAdminStore = create<AdminState>((set, get) => ({
-  // === 銷售訂單 ===
-  salesOrders: [],
+  saleOrders: [],
   salesLoadedAt: 0,
   salesLoading: false,
   loadSales: async (force = false) => {
@@ -45,8 +40,8 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     if (salesLoading) return
     set({ salesLoading: true })
     try {
-      const data = await getSalesInvoices()
-      set({ salesOrders: data, salesLoadedAt: Date.now() })
+      const data = await getSaleOrders()
+      set({ saleOrders: data, salesLoadedAt: Date.now() })
     } catch (err) {
       console.error('[store] 載入銷售訂單失敗:', err)
     } finally {
@@ -54,7 +49,6 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     }
   },
 
-  // === 產品 ===
   products: [],
   productsLoadedAt: 0,
   productsLoading: false,
@@ -73,7 +67,6 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     }
   },
 
-  // === 採購單 ===
   purchaseOrders: [],
   purchasesLoadedAt: 0,
   purchasesLoading: false,
@@ -92,13 +85,8 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     }
   },
 
-  // === 全部載入 ===
   loadAll: async (force = false) => {
     const { loadSales, loadProducts, loadPurchases } = get()
-    await Promise.all([
-      loadSales(force),
-      loadProducts(force),
-      loadPurchases(force),
-    ])
+    await Promise.all([loadSales(force), loadProducts(force), loadPurchases(force)])
   },
 }))

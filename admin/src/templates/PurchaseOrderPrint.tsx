@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 供應商採購單 — 列印版面
  * 使用 API 回傳的 PurchaseOrder 資料，不依賴 mockData

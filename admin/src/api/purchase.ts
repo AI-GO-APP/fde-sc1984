@@ -1,104 +1,114 @@
-import { db } from './client';
+/**
+ * 採購訂單 API — 嚴格 AI GO 標準
+ *
+ * purchase_orders.state: draft | sent | purchase | done | cancel
+ */
+import { db } from './client'
+import { isUUID } from '../utils/displayHelpers'
+
+// ─── 型別 ───
 
 export interface PurchaseOrder {
-  id: string;
-  erp_id: string;
-  supplier_id: string;
-  date: string;
-  status: string;
-  total_amount: number;
-  lines: PurchaseOrderLine[];
+  id: string
+  name: string            // PO 編號
+  state: string           // draft | sent | purchase | done | cancel
+  date: string
+  supplierName: string    // 已解析的供應商名稱
+  totalAmount: number
+  note: string
+  lines: PurchaseOrderLine[]
 }
 
 export interface PurchaseOrderLine {
-  id: string;
-  order_id: string;
-  product_id: string;
-  name: string;
-  quantity: number;
-  unit_price: number;
-  subtotal: number;
+  id: string
+  orderId: string
+  productTemplateId: string
+  name: string            // 品名
+  quantity: number
+  unitPrice: number
+  subtotal: number
 }
 
-export interface PurchaseInvoice {
-  id: string;
-  erp_id: string;
-  supplier_id: string;
-  date: string;
-  status: string;
-  total_amount: number;
-  lines: PurchaseInvoiceLine[];
+// ─── 名稱解析 ───
+
+const resolveSupplierName = (raw: any, supplierMap: Record<string, string>): string => {
+  if (Array.isArray(raw)) return String(raw[1] || raw[0])
+  if (typeof raw === 'string' && supplierMap[raw]) return supplierMap[raw]
+  if (typeof raw === 'string' && !isUUID(raw)) return raw
+  return '未知供應商'
 }
 
-export interface PurchaseInvoiceLine {
-  id: string;
-  invoice_id: string;
-  product_id: string;
-  quantity: number;
-  unit_price: number;
-  subtotal: number;
-}
+// ─── API ───
 
 export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
-  const [orders, lines] = await Promise.all([
+  const [orders, lines, suppliers] = await Promise.all([
     db.query('purchase_orders'),
-    db.query('purchase_order_lines')
-  ]);
-  
-  return orders.map(o => ({
+    db.query('purchase_order_lines'),
+    db.query('suppliers').catch(() => []),
+  ])
+
+  const supplierMap: Record<string, string> = {}
+  ;(suppliers || []).forEach((s: any) => {
+    supplierMap[String(s.id)] = s.name || ''
+  })
+
+  return orders.map((o: any) => ({
     id: String(o.id),
-    erp_id: o.name || String(o.id),
+    name: o.name || String(o.id),
+    state: o.state || 'draft',
     date: o.date_order ? String(o.date_order).split(' ')[0] : '',
-    supplier_id: Array.isArray(o.supplier_id) ? o.supplier_id[1] : o.supplier_id,
-    total_amount: o.amount_total || 0,
-    status: o.state || 'draft',
-    lines: lines.filter(l => (Array.isArray(l.order_id) ? l.order_id[0] : l.order_id) === o.id).map(l => ({
+    supplierName: resolveSupplierName(o.supplier_id, supplierMap),
+    totalAmount: o.amount_total || 0,
+    note: o.note || '',
+    lines: lines
+      .filter((l: any) => (Array.isArray(l.order_id) ? l.order_id[0] : l.order_id) === o.id)
+      .map((l: any) => ({
         id: String(l.id),
-        order_id: String(o.id),
-        product_id: Array.isArray(l.product_template_id) ? String(l.product_template_id[0]) : String(l.product_template_id || l.product_id || ''),
-        name: l.name || '',
+        orderId: String(o.id),
+        productTemplateId: Array.isArray(l.product_template_id)
+          ? String(l.product_template_id[0])
+          : String(l.product_template_id || l.product_id || ''),
+        name: l.name || '未知商品',
         quantity: l.product_qty || 0,
-        unit_price: l.price_unit || 0,
-        subtotal: l.price_subtotal || 0
-    }))
-  }));
-};
+        unitPrice: l.price_unit || 0,
+        subtotal: l.price_subtotal || 0,
+      })),
+  }))
+}
 
-export const updatePurchaseOrderStatus = async (id: string, status: string) => {
-  return await db.update('purchase_orders', id, { state: status });
-};
+/** 更新採購單狀態（不可逆操作） */
+export const updatePurchaseOrderState = async (id: string, state: string) => {
+  return await db.update('purchase_orders', id, { state })
+}
 
-export const getPurchaseInvoices = async (): Promise<PurchaseInvoice[]> => {
-  // Mapping to POs for now based on context 
-  return []; 
-};
-
-export const updatePurchaseInvoiceStatus = async (_id: string, _status: string) => {
-  return {};
-};
+/** 更新採購單明細行（數量 / 單價） */
+export const updatePurchaseOrderLine = async (
+  lineId: string,
+  data: { product_qty?: number; price_unit?: number },
+) => {
+  return await db.update('purchase_order_lines', lineId, data)
+}
 
 /**
- * 從已確認的銷售訂單產生採購單
- * 
- * 流程：
- * 1. 彙總所有已確認銷售訂單的品項需求
- * 2. （未來可按供應商分組）建立單張採購單
- * 3. 逐行建立採購單明細
+ * 從已確認銷售訂單產生採購單
+ *
+ * 彙總 state=sale 的 sale_orders 品項需求 → 建立單張 PO + lines
  */
-export async function generatePurchaseOrders(
-  confirmedOrders: Array<{ lines: Array<{ product_id: string; product_template_id?: string; name: string; quantity: number }> }>,
-  _products: Array<{ id: string; name: string; sku: string }>,
-): Promise<string[]> {
+export async function generatePurchaseOrder(
+  confirmedOrders: Array<{
+    lines: Array<{ productTemplateId: string; name: string; quantity: number }>
+  }>,
+): Promise<string> {
   if (confirmedOrders.length === 0) throw new Error('沒有已確認的訂單可產生採購單')
 
   // 彙總品項需求量
-  const productDemand = new Map<string, { name: string; totalQty: number }>()
+  const demand = new Map<string, { name: string; totalQty: number }>()
   for (const order of confirmedOrders) {
     for (const line of order.lines) {
-      const pid = line.product_template_id || line.product_id
-      const existing = productDemand.get(pid) || { name: line.name || '未知', totalQty: 0 }
+      const pid = line.productTemplateId
+      const existing = demand.get(pid) || { name: line.name || '未知', totalQty: 0 }
       existing.totalQty = Math.round((existing.totalQty + line.quantity) * 100) / 100
-      productDemand.set(pid, existing)
+      demand.set(pid, existing)
     }
   }
 
@@ -111,16 +121,16 @@ export async function generatePurchaseOrders(
   const poId = poRes.id
 
   // 建立採購單明細行
-  const linePromises = Array.from(productDemand.entries()).map(([pid, demand]) =>
+  const linePromises = Array.from(demand.entries()).map(([pid, d]) =>
     db.insert('purchase_order_lines', {
       order_id: poId,
       product_template_id: pid,
-      product_qty: demand.totalQty,
-      name: demand.name,
+      product_qty: d.totalQty,
+      name: d.name,
       price_unit: 0,
-    })
+    }),
   )
   await Promise.all(linePromises)
 
-  return [poId]
+  return poId
 }
