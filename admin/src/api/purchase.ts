@@ -120,7 +120,7 @@ export const getPurchaseOrders = async (targetDate: string): Promise<PurchaseOrd
   let lines: any[] = []
   if (orderIds.length > 0) {
     lines = await db.query('purchase_order_lines', { 
-      select_columns: ['id', 'order_id', 'product_template_id', 'product_id', 'name', 'product_qty', 'qty_received', 'price_unit'],
+      select_columns: ['id', 'order_id', 'product_id', 'name', 'product_qty', 'qty_received', 'price_unit'],
       filters: [{ column: 'order_id', op: 'in', value: orderIds }]
     })
   }
@@ -137,7 +137,7 @@ export const getPurchaseOrders = async (targetDate: string): Promise<PurchaseOrd
     lines: lines
       .filter((l: any) => resolveId(l.order_id) === String(o.id))
       .map((l: any) => {
-        const ptId = resolveId(l.product_template_id || l.product_id)
+        const ptId = resolveId(l.product_id)
         const actualQty = l.qty_received || 0
         const unitPrice = l.price_unit || 0
         return {
@@ -258,7 +258,7 @@ export async function autoAddToPurchaseOrder(
     // 逐品項處理
     for (const line of lines) {
       const existingLine = poLines.find(
-        (l: any) => resolveId(l.product_template_id) === line.productTemplateId,
+        (l: any) => resolveId(l.product_id) === line.productTemplateId,
       )
 
       if (existingLine) {
@@ -269,7 +269,7 @@ export async function autoAddToPurchaseOrder(
         // 新增 line
         await db.insert('purchase_order_lines', {
           order_id: targetPOId,
-          product_template_id: line.productTemplateId,
+          product_id: line.productTemplateId,
           product_qty: line.quantity,
           name: line.name,
           price_unit: 0,
