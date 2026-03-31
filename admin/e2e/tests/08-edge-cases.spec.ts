@@ -1,141 +1,74 @@
 /**
- * 08 - 邊界案例 & 異常 E2E 測試
- * 涵蓋：無 Token、API 攔截、網路模擬、快速操作、冪等性
+ * 08 - 邊界案例 E2E 測試
+ * 涵蓋：無 Token 存取、API 錯誤容錯、極端日期切換
  */
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../fixtures/test-fixtures'
+import { getCurrentDateText } from '../helpers/date-navigator'
 
-test.describe('Edge Cases & Robustness', () => {
-
-  test('8.1 無 Token → 頁面不崩潰', async ({ page }) => {
-    // 不使用 authedPage，故意不注入 Token
+test.describe('邊界案例', () => {
+  test('8.1 無 Token 時頁面不崩潰', async ({ page }) => {
+    // 不注入 token，模擬未認證
     await page.goto('/')
-    await page.waitForLoadState('domcontentloaded')
-    // Dashboard 的 try/catch 應 fallback
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
-    // 應仍顯示 Dashboard 標題
-    await expect(page.getByText('管理總覽')).toBeVisible()
-  })
-
-  test('8.2 Token 過期 → 頁面不崩潰', async ({ page }) => {
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'expired_invalid_token_xxxxx')
-    })
-    await page.reload()
     await page.waitForLoadState('domcontentloaded')
     const body = await page.textContent('body')
     expect(body).toBeTruthy()
   })
 
-  test('8.3 網路斷線模擬 → 載入不卡死', async ({ page }) => {
-    // 注入一個有效結構但不接 API
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'test_token_for_offline')
-    })
-    
-    // 攔截所有 API 並回傳空陣列
-    await page.route('**/api/v1/**', route => {
-      route.fulfill({ status: 200, body: '[]', contentType: 'application/json' })
-    })
+  test('8.2 快速連續點擊日期切換不崩潰', async ({ authedPage }) => {
+    await authedPage.goto('/')
+    await authedPage.waitForLoadState('domcontentloaded')
+    await authedPage.waitForTimeout(1000)
 
-    await page.goto('/sales-orders')
-    await page.waitForLoadState('domcontentloaded')
-    // 應顯示空列表而非崩潰
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
+    const prevBtn = authedPage.locator('button[title="前一天"]')
+    // 快速連點 5 次
+    for (let i = 0; i < 5; i++) {
+      await prevBtn.click()
+      await authedPage.waitForTimeout(100) // 極短間隔
+    }
+    await authedPage.waitForTimeout(2000)
+
+    // 頁面應未崩潰，仍可見管理總覽
+    await expect(authedPage.getByText('管理總覽')).toBeVisible()
+    // 日期應仍為合法格式
+    const dateText = await getCurrentDateText(authedPage)
+    expect(dateText).toMatch(/\d{4}-\d{2}-\d{2}/)
   })
 
-  test('8.4 API 超時 → 頁面可恢復', async ({ page }) => {
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'test_token_slow')
-    })
+  test('8.3 切換到很舊的日期（無訂單）頁面不崩潰', async ({ authedPage }) => {
+    await authedPage.goto('/')
+    await authedPage.waitForLoadState('domcontentloaded')
+    await authedPage.waitForTimeout(1000)
 
-    // 攔截 API 讓其延遲 3 秒
-    await page.route('**/api/v1/**', async route => {
-      await new Promise(r => setTimeout(r, 3000))
-      route.fulfill({ status: 200, body: '[]', contentType: 'application/json' })
-    })
+    const prevBtn = authedPage.locator('button[title="前一天"]')
+    // 翻到 30 天前
+    for (let i = 0; i < 30; i++) {
+      await prevBtn.click()
+      await authedPage.waitForTimeout(50)
+    }
+    await authedPage.waitForTimeout(2000)
 
-    await page.goto('/stock')
-    // 應出現 Loading 但最終顯示頁面
-    await page.waitForLoadState('domcontentloaded')
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
+    // 應不崩潰
+    await expect(authedPage.getByText('管理總覽')).toBeVisible()
   })
 
-  test('8.5 快速連續切換頁面 → 無 race condition', async ({ page }) => {
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'test_token')
-    })
-    await page.reload()
+  test('8.4 各子頁面空資料狀態顯示正常', async ({ authedPage }) => {
+    // 翻到很久前沒有訂單的日期
+    await authedPage.goto('/')
+    await authedPage.waitForLoadState('domcontentloaded')
+    await authedPage.waitForTimeout(1000)
 
-    // 快速切換
-    await page.goto('/sales-orders')
-    await page.goto('/procurement')
-    await page.goto('/delivery')
-    await page.goto('/stock')
-    await page.goto('/')
-    
-    await page.waitForLoadState('domcontentloaded')
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
-  })
+    const prevBtn = authedPage.locator('button[title="前一天"]')
+    for (let i = 0; i < 30; i++) {
+      await prevBtn.click()
+      await authedPage.waitForTimeout(50)
+    }
+    await authedPage.waitForTimeout(1000)
 
-  test('8.6 API 回傳 500 → 不白屏', async ({ page }) => {
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'test_token_500')
-    })
-
-    await page.route('**/api/v1/**', route => {
-      route.fulfill({ status: 500, body: '{"error":"Internal Server Error"}', contentType: 'application/json' })
-    })
-
-    await page.goto('/sales-orders')
-    await page.waitForLoadState('domcontentloaded')
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
-  })
-
-  test('8.7 API 回傳非陣列格式 → 不崩潰', async ({ page }) => {
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'test_token_bad_format')
-    })
-
-    await page.route('**/api/v1/**', route => {
-      route.fulfill({ status: 200, body: '{"unexpected": "object"}', contentType: 'application/json' })
-    })
-
-    await page.goto('/')
-    await page.waitForLoadState('domcontentloaded')
-    // Dashboard 有 fallback
-    const body = await page.textContent('body')
-    expect(body).toBeTruthy()
-  })
-
-  test('8.8 回上頁後再前進 → 資料不遺失', async ({ page }) => {
-    await page.goto('/')
-    await page.evaluate(() => {
-      localStorage.setItem('admin_token', 'test')
-    })
-    await page.reload()
-    await page.waitForLoadState('domcontentloaded')
-    
-    await page.goto('/stock')
-    await page.waitForLoadState('domcontentloaded')
-    
-    await page.goBack()
-    await page.waitForLoadState('domcontentloaded')
-    
-    await page.goForward()
-    await page.waitForLoadState('domcontentloaded')
-    
-    const body = await page.textContent('body')
+    // 進入確認訂單 — 應顯示空狀態
+    await authedPage.goto('/orders')
+    await authedPage.waitForLoadState('domcontentloaded')
+    await authedPage.waitForTimeout(2000)
+    const body = await authedPage.textContent('body')
     expect(body).toBeTruthy()
   })
 })

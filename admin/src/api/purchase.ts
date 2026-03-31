@@ -90,17 +90,21 @@ export const getSupplierMap = async (): Promise<Record<string, string>> => {
   }
 }
 
-export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
-  // 算出 7 天前的 UTC 日期
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7)
-  const dateStr = sevenDaysAgo.toISOString().split('T')[0]
+import { getOrderDateBounds } from '../utils/dateHelpers'
+
+export const getPurchaseOrders = async (targetDate: string): Promise<PurchaseOrder[]> => {
+  // 取出精準的 Odoo UTC [開始, 結束) 界線
+  const { start, end } = getOrderDateBounds(targetDate)
 
   // 第一階段平行拉取母單、供應商、單位、活性商品
   const [orders, supplierNameMap, uomMap, products] = await Promise.all([
     db.query('purchase_orders', { 
       select_columns: ['id', 'name', 'state', 'date_order', 'supplier_id', 'amount_total', 'note'],
-      filters: [{ column: 'date_order', op: 'ge', value: `${dateStr} 00:00:00` }]
+      filters: [
+        { column: 'date_order', op: 'ge', value: start },
+        { column: 'date_order', op: 'lt', value: end },
+        { column: 'state', op: 'in', value: ['draft', 'sent', 'purchase'] }
+      ]
     }),
     getSupplierMap(),
     getUomMap(),
@@ -131,7 +135,7 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
     id: String(o.id),
     name: o.name || String(o.id),
     state: o.state || 'draft',
-    date: o.date_order ? String(o.date_order).split(' ')[0] : '',
+    date: targetDate, // 強制歸屬為目標日
     supplierId: resolveId(o.supplier_id),
     supplierName: resolveSupplierName(o.supplier_id, supplierNameMap),
     totalAmount: o.amount_total || 0,

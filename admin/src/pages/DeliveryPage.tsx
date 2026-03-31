@@ -2,7 +2,7 @@
  * Step 4: 出貨配送 — 按司機篩選、確認送達
  */
 import { useState, useMemo, useEffect } from 'react'
-import BackButton from '../components/BackButton'
+import PageHeader from '../components/PageHeader'
 import { useAdminStore } from '../store/useAdminStore'
 import { useUIStore } from '../store/useUIStore'
 import { updateSaleOrderState } from '../api/sales'
@@ -10,13 +10,13 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { shortId } from '../utils/displayHelpers'
 
 export default function DeliveryPage() {
-  const { saleOrders, loadAll } = useAdminStore()
+  const { targetDate, saleOrders, loadAll } = useAdminStore()
   const { withLoading } = useUIStore()
   const [driverFilter, setDriverFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [targetDate, loadAll])
 
   // 已確認 + 已分配的訂單（等待出貨 or 已送達）
   const deliverableOrders = useMemo(() => {
@@ -51,38 +51,32 @@ export default function DeliveryPage() {
   const pendingCount = deliverableOrders.filter(o => o.state === 'sale').length
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-3">
-            <BackButton />
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">出貨配送</h1>
-              <p className="text-sm text-gray-400">{pendingCount} 筆待出貨</p>
-            </div>
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <PageHeader title="出貨配送" showBack>
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+          {/* 司機篩選 */}
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-sm text-gray-500 mr-2">{pendingCount} 筆待出貨</span>
+            <button onClick={() => setDriverFilter('all')}
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                driverFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}>
+              全部
+            </button>
+            {activeDrivers.map(d => (
+              <button key={d} onClick={() => setDriverFilter(d)}
+                className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  driverFilter === d ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                }`}>
+                🚚 {d}
+              </button>
+            ))}
+            {activeDrivers.length === 0 && (
+              <span className="text-xs text-gray-400 py-1 ml-2">尚無指派司機的訂單</span>
+            )}
           </div>
         </div>
-        {/* 司機篩選 */}
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => setDriverFilter('all')}
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              driverFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}>
-            全部
-          </button>
-          {activeDrivers.map(d => (
-            <button key={d} onClick={() => setDriverFilter(d)}
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                driverFilter === d ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-              }`}>
-              🚚 {d}
-            </button>
-          ))}
-          {activeDrivers.length === 0 && (
-            <span className="text-xs text-gray-400 py-1">尚無指派司機的訂單</span>
-          )}
-        </div>
-      </header>
+      </PageHeader>
 
       <div className="p-6 max-w-5xl mx-auto space-y-3">
         {deliverableOrders.length === 0 ? (

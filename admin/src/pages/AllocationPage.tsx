@@ -4,7 +4,7 @@
  * 規則：每個品項的分配總量不能超過實際採購量
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import BackButton from '../components/BackButton'
+import PageHeader from '../components/PageHeader'
 import { useAdminStore } from '../store/useAdminStore'
 import { useUIStore } from '../store/useUIStore'
 import {
@@ -14,14 +14,14 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import { shortId } from '../utils/displayHelpers'
 
 export default function AllocationPage() {
-  const { saleOrders, purchaseOrders, drivers, loadAll } = useAdminStore()
+  const { targetDate, saleOrders, purchaseOrders, drivers, loadAll } = useAdminStore()
   const { withLoading } = useUIStore()
   const [expanded, setExpanded] = useState<string | null>(null)
   const [completingId, setCompletingId] = useState<string | null>(null)
   // 本地編輯：{ lineId: qty, orderId_driver: driverName }
   const [edits, setEdits] = useState<Record<string, string>>({})
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [targetDate, loadAll])
 
   // 已確認但尚未完成配送的訂單
   const allocatableOrders = useMemo(() =>
@@ -198,21 +198,17 @@ export default function AllocationPage() {
   }, [allocatableOrders, edits, purchasedQtyMap])
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="sticky top-0 z-20 bg-white border-b border-gray-200">
-        <div className="px-6 py-4 flex items-center gap-3">
-          <BackButton />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">出庫分配</h1>
-            <p className="text-sm text-gray-400">
-              {unallocatedCount > 0 ? `${unallocatedCount} 筆待分配` : '全部已分配'}
-            </p>
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-20">
+      <div className="sticky top-0 z-20 bg-white shadow-sm flex flex-col">
+        <PageHeader title="出庫分配" showBack>
+          <div className="pt-2 text-center md:text-left text-sm text-gray-500">
+            {unallocatedCount > 0 ? `${unallocatedCount} 筆待分配` : '全部已分配'}
           </div>
-        </div>
+        </PageHeader>
 
         {/* 橫向滾動剩餘數量狀態列 */}
         {remainingSummary.length > 0 && (
-          <div className="bg-gray-100/80 backdrop-blur-md px-6 py-2.5 overflow-x-auto no-scrollbar shadow-inner border-t border-gray-200">
+          <div className="bg-gray-100/90 backdrop-blur-md px-6 py-2.5 overflow-x-auto no-scrollbar shadow-inner border-y border-gray-200 shrink-0">
             <div className="flex gap-3">
               <span className="text-xs font-bold text-gray-500 whitespace-nowrap self-center mr-2">
                 即時可用扣減量：
@@ -244,9 +240,9 @@ export default function AllocationPage() {
             </div>
           </div>
         )}
-      </header>
+      </div>
 
-      <div className="p-6 max-w-5xl mx-auto space-y-3">
+      <div className="p-6 flex-1 max-w-5xl mx-auto space-y-3 w-full">
         {allocatableOrders.length === 0 ? (
           <div className="text-center text-gray-400 py-12">目前沒有待分配的訂單</div>
         ) : allocatableOrders.map(order => {

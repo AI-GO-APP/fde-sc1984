@@ -8,14 +8,24 @@ import { create } from 'zustand'
 import { getSaleOrders, type SaleOrder } from '../api/sales'
 import { getProducts, getDrivers, type Product } from '../api/stock'
 import { getPurchaseOrders, type PurchaseOrder } from '../api/purchase'
+import { getTodayDateStr } from '../utils/dateHelpers'
 
 const TTL = 5 * 60 * 1000
 
 interface AdminState {
+  targetDate: string
+  setTargetDate: (dateStr: string) => Promise<void>
+
+  // 快取池 (以 dateStr 為 key)
+  salesCache: Record<string, SaleOrder[]>
+  purchasesCache: Record<string, PurchaseOrder[]>
+  salesLoadedAt: Record<string, number>
+  purchasesLoadedAt: Record<string, number>
+
+  // 當前畫面的暴露狀態
   saleOrders: SaleOrder[]
-  salesLoadedAt: number
   salesLoading: boolean
-  loadSales: (force?: boolean) => Promise<void>
+  loadSales: (dateStr: string, force?: boolean) => Promise<void>
 
   products: Product[]
   productsLoadedAt: number
@@ -23,9 +33,8 @@ interface AdminState {
   loadProducts: (force?: boolean) => Promise<void>
 
   purchaseOrders: PurchaseOrder[]
-  purchasesLoadedAt: number
   purchasesLoading: boolean
-  loadPurchases: (force?: boolean) => Promise<void>
+  loadPurchases: (dateStr: string, force?: boolean) => Promise<void>
 
   drivers: Array<{ id: string; name: string }>
   driversLoadedAt: number
@@ -35,17 +44,37 @@ interface AdminState {
 }
 
 export const useAdminStore = create<AdminState>((set, get) => ({
+  targetDate: getTodayDateStr(),
+  setTargetDate: async (dateStr: string) => {
+    set({ targetDate: dateStr })
+    // 更新對外呈現的當前指標，若已存在則直接秒切，若不存在將交由 loadAll 去補抓
+    set(state => ({
+      saleOrders: state.salesCache[dateStr] || [],
+      purchaseOrders: state.purchasesCache[dateStr] || [],
+    }))
+    await get().loadAll()
+  },
+
+  salesCache: {},
+  purchasesCache: {},
+  salesLoadedAt: {},
+  purchasesLoadedAt: {},
+
   saleOrders: [],
-  salesLoadedAt: 0,
   salesLoading: false,
-  loadSales: async (force = false) => {
+  loadSales: async (dateStr: string, force = false) => {
     const { salesLoadedAt, salesLoading } = get()
-    if (!force && Date.now() - salesLoadedAt < TTL) return
+    if (!force && (Date.now() - (salesLoadedAt[dateStr] || 0) < TTL)) return
     if (salesLoading) return
     set({ salesLoading: true })
     try {
-      const data = await getSaleOrders()
-      set({ saleOrders: data, salesLoadedAt: Date.now() })
+      const data = await getSaleOrders(dateStr)
+      set(state => ({
+        salesCache: { ...state.salesCache, [dateStr]: data },
+        salesLoadedAt: { ...state.salesLoadedAt, [dateStr]: Date.now() },
+        // 只在畫面上目標日沒變時更新現行陣列
+        ...(state.targetDate === dateStr ? { saleOrders: data } : {})
+      }))
     } catch (err) {
       console.error('[store] 載入銷售訂單失敗:', err)
     } finally {
@@ -72,16 +101,19 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   },
 
   purchaseOrders: [],
-  purchasesLoadedAt: 0,
   purchasesLoading: false,
-  loadPurchases: async (force = false) => {
+  loadPurchases: async (dateStr: string, force = false) => {
     const { purchasesLoadedAt, purchasesLoading } = get()
-    if (!force && Date.now() - purchasesLoadedAt < TTL) return
+    if (!force && (Date.now() - (purchasesLoadedAt[dateStr] || 0) < TTL)) return
     if (purchasesLoading) return
     set({ purchasesLoading: true })
     try {
-      const data = await getPurchaseOrders()
-      set({ purchaseOrders: data, purchasesLoadedAt: Date.now() })
+      const data = await getPurchaseOrders(dateStr)
+      set(state => ({
+        purchasesCache: { ...state.purchasesCache, [dateStr]: data },
+        purchasesLoadedAt: { ...state.purchasesLoadedAt, [dateStr]: Date.now() },
+        ...(state.targetDate === dateStr ? { purchaseOrders: data } : {})
+      }))
     } catch (err) {
       console.error('[store] 載入採購單失敗:', err)
     } finally {
@@ -103,7 +135,12 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   },
 
   loadAll: async (force = false) => {
-    const { loadSales, loadProducts, loadPurchases, loadDrivers } = get()
-    await Promise.all([loadSales(force), loadProducts(force), loadPurchases(force), loadDrivers(force)])
+    const { targetDate, loadSales, loadProducts, loadPurchases, loadDrivers } = get()
+    await Promise.all([
+      loadSales(targetDate, force), 
+      loadProducts(force), 
+      loadPurchases(targetDate, force), 
+      loadDrivers(force)
+    ])
   },
 }))
