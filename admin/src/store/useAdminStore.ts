@@ -2,13 +2,14 @@
  * Admin 全域狀態管理 — Zustand Store
  *
  * 資料來源：銷售訂單、產品、採購單、司機
- * 含 5 分鐘 TTL 快取
+ * 含 5 分鐘 TTL 快取 + 參照資料一次性預載
  */
 import { create } from 'zustand'
 import { getSaleOrders, type SaleOrder } from '../api/sales'
-import { getProducts, getDrivers, type Product } from '../api/stock'
+import { getProducts, type Product } from '../api/stock'
 import { getPurchaseOrders, type PurchaseOrder } from '../api/purchase'
 import { getTodayDateStr } from '../utils/dateHelpers'
+import { preloadRefData, clearRefCache, getCachedDrivers } from '../api/refCache'
 
 const TTL = 5 * 60 * 1000
 
@@ -40,6 +41,8 @@ interface AdminState {
   driversLoadedAt: number
   loadDrivers: (force?: boolean) => Promise<void>
 
+  // 全域 Loading 狀態
+  globalLoading: boolean
   loadAll: (force?: boolean) => Promise<void>
 }
 
@@ -47,12 +50,16 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   targetDate: getTodayDateStr(),
   setTargetDate: async (dateStr: string) => {
     set({ targetDate: dateStr })
-    // 更新對外呈現的當前指標，若已存在則直接秒切，若不存在將交由 loadAll 去補抓
-    set(state => ({
+    // 更新對外呈現的當前指標，若已存在則直接秒切
+    const state = get()
+    set({
       saleOrders: state.salesCache[dateStr] || [],
       purchaseOrders: state.purchasesCache[dateStr] || [],
-    }))
-    await get().loadAll()
+    })
+    // 若快取不存在，觸發載入（會顯示 loading）
+    if (!state.salesCache[dateStr] || !state.purchasesCache[dateStr]) {
+      await get().loadAll()
+    }
   },
 
   salesCache: {},
@@ -72,7 +79,6 @@ export const useAdminStore = create<AdminState>((set, get) => ({
       set(state => ({
         salesCache: { ...state.salesCache, [dateStr]: data },
         salesLoadedAt: { ...state.salesLoadedAt, [dateStr]: Date.now() },
-        // 只在畫面上目標日沒變時更新現行陣列
         ...(state.targetDate === dateStr ? { saleOrders: data } : {})
       }))
     } catch (err) {
@@ -127,20 +133,31 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     const { driversLoadedAt } = get()
     if (!force && Date.now() - driversLoadedAt < TTL) return
     try {
-      const data = await getDrivers()
+      const data = await getCachedDrivers()
       set({ drivers: data, driversLoadedAt: Date.now() })
     } catch (err) {
       console.error('[store] 載入司機失敗:', err)
     }
   },
 
+  globalLoading: false,
   loadAll: async (force = false) => {
-    const { targetDate, loadSales, loadProducts, loadPurchases, loadDrivers } = get()
-    await Promise.all([
-      loadSales(targetDate, force), 
-      loadProducts(force), 
-      loadPurchases(targetDate, force), 
-      loadDrivers(force)
-    ])
+    set({ globalLoading: true })
+    try {
+      // 步驟一：預載所有參照資料（快取命中時秒回）
+      if (force) clearRefCache()
+      await preloadRefData()
+
+      // 步驟二：平行載入依賴日期的業務資料
+      const { targetDate, loadSales, loadProducts, loadPurchases, loadDrivers } = get()
+      await Promise.all([
+        loadSales(targetDate, force), 
+        loadProducts(force), 
+        loadPurchases(targetDate, force), 
+        loadDrivers(force)
+      ])
+    } finally {
+      set({ globalLoading: false })
+    }
   },
 }))

@@ -7,7 +7,7 @@
  */
 import { db } from './client'
 import { isUUID } from '../utils/displayHelpers'
-import { getUomMap, resolveUom } from './stock'
+// 參照資料由 refCache 統一管理
 
 // ─── 型別 ───
 
@@ -70,31 +70,29 @@ const resolveCustomerName = (raw: any, customerMap: Record<string, string>): str
 }
 
 import { getOrderDateBounds } from '../utils/dateHelpers'
+import { getCachedCustomerMap, getCachedProductUomMap } from './refCache'
 
 export const getSaleOrders = async (targetDate: string): Promise<SaleOrder[]> => {
-  // 取出精準的 Odoo UTC [開始, 結束) 界線
+  // 取出精準的 Odoo UTC [開始, 結束) 界線（用於前端篩選）
   const { start, end } = getOrderDateBounds(targetDate)
 
-  // 第一階段平行拉取母單、客人、單位、活性商品
-  const [orders, customers, uomMap, products] = await Promise.all([
+  // 平行拉取：活躍訂單 + 快取的參照資料
+  const [allOrders, customerMap, productUom] = await Promise.all([
     db.query('sale_orders', { 
       select_columns: ['id', 'name', 'state', 'date_order', 'customer_id', 'amount_total', 'note'],
       filters: [
-        { column: 'date_order', op: 'ge', value: start },
-        { column: 'date_order', op: 'lt', value: end },
-        { column: 'state', op: 'in', value: ['draft', 'sent', 'sale'] } // 過濾掉廢單與歷史 done 單
+        { column: 'state', op: 'in', value: ['draft', 'sent', 'sale'] }
       ]
     }),
-    db.query('customers', { select_columns: ['id', 'name'] }).catch(() => []),
-    getUomMap(),
-    db.query('product_templates', { 
-      select_columns: ['id', 'uom_id'],
-      filters: [
-        { column: 'sale_ok', op: 'eq', value: true },
-        { column: 'active', op: 'eq', value: true },
-      ]
-    }),
+    getCachedCustomerMap(),
+    getCachedProductUomMap(),
   ])
+
+  // 前端做 02:00 UTC+8 週期過濾（後端 proxy 不支援 ge/lt 運算子）
+  const orders = allOrders.filter((o: any) => {
+    const d = String(o.date_order || '')
+    return d >= start && d < end
+  })
 
   // 第二階段：只拉取這批訂單關聯的子明細
   const orderIds = orders.map((o: any) => o.id)
@@ -105,16 +103,6 @@ export const getSaleOrders = async (targetDate: string): Promise<SaleOrder[]> =>
       filters: [{ column: 'order_id', op: 'in', value: orderIds }]
     })
   }
-
-  const customerMap: Record<string, string> = {}
-  ;(customers || []).forEach((c: any) => {
-    customerMap[String(c.id)] = c.name || ''
-  })
-
-  const productUom: Record<string, string> = {}
-  products.forEach((p: any) => {
-    productUom[String(p.id)] = resolveUom(p.uom_id, uomMap)
-  })
 
   return orders.map((o: any) => {
     const noteData = parseNote(o.note)

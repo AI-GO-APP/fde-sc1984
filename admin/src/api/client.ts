@@ -47,69 +47,64 @@ export const db = {
       }
     }
 
-    // 自動分頁：每頁 500 筆，平行批次處理以大幅縮短等待時間
+    // 自動分頁：先試探再並行，避免盲目發送無效請求產生 400 錯誤
     const PAGE_SIZE = 500
-    const BATCH_REQUESTS = 5 // 每次並行送出 5 個分頁請求 (單次總撈取 2500 筆)
+    const BATCH_SIZE = 4 // 試探後每批並行抓取數量
     
     let all: T[] = []
-    let currentOffset = 0
-    let lastFirstId: string | null = null
 
-    const fetchPage = async (offset: number) => {
-      try {
-        if (hasAdvance) {
-          const res = await apiClient.post(`/open/proxy/${table}/query`, { ...opts, limit: PAGE_SIZE, offset })
-          return res.data
-        } else {
-          const params = new URLSearchParams()
-          params.set('limit', String(PAGE_SIZE))
-          params.set('offset', String(offset))
-          const qs = params.toString() ? '?' + params.toString() : ''
-          const res = await apiClient.get(`/open/proxy/${table}${qs}`)
-          return res.data
-        }
-      } catch (err) {
-        console.error(`[db.query] Failed fetching page for ${table} at offset ${offset}:`, err)
-        return [] // 失敗時退回空陣列
+    const fetchPage = async (offset: number): Promise<T[]> => {
+      if (hasAdvance) {
+        const res = await apiClient.post(`/open/proxy/${table}/query`, { ...opts, limit: PAGE_SIZE, offset })
+        return res.data
+      } else {
+        const params = new URLSearchParams()
+        params.set('limit', String(PAGE_SIZE))
+        params.set('offset', String(offset))
+        const res = await apiClient.get(`/open/proxy/${table}?${params}`)
+        return res.data
       }
     }
 
+    // 第一步：試探性請求（僅發 1 筆）
+    let firstPage: T[]
+    try {
+      firstPage = await fetchPage(0)
+    } catch {
+      return [] // 表不存在或無權限
+    }
+    if (!Array.isArray(firstPage) || firstPage.length === 0) return []
+    all = firstPage
+
+    // 若第一頁未塞滿，代表資料不到 500 筆，直接返回（不發多餘請求）
+    if (firstPage.length < PAGE_SIZE) return all
+
+    // 第二步：資料超過一頁，開始並行分頁
+    let currentOffset = PAGE_SIZE
+    const firstId = String((firstPage[0] as any).id)
+
     while (true) {
-      // 產生這批次的 5 個 Promise
-      const batchPromises = Array.from({ length: BATCH_REQUESTS }, (_, i) => fetchPage(currentOffset + i * PAGE_SIZE))
+      const batchPromises = Array.from(
+        { length: BATCH_SIZE },
+        (_, i) => fetchPage(currentOffset + i * PAGE_SIZE).catch(() => [] as T[]),
+      )
       const batchResults = await Promise.all(batchPromises)
       
-      let batchFinished = false
-
-      // 依序檢查這 5 個 Promise 的結果
+      let done = false
       for (const page of batchResults) {
-        if (!Array.isArray(page) || page.length === 0) {
-          batchFinished = true
-          break
-        }
+        if (!Array.isArray(page) || page.length === 0) { done = true; break }
 
-        // 防呆：如果後端不支援 offset，則所有請求都會回傳首頁資料，強制中斷
-        const currentFirstId = String((page[0] as any).id)
-        if (lastFirstId !== null && currentFirstId === lastFirstId) {
-          console.warn(`[db.query] Offset ignored by server for ${table}, breaking to prevent infinite loop.`)
-          batchFinished = true
-          break
-        }
-        lastFirstId = currentFirstId
+        // 防呆：若 server 忽略 offset 回傳相同首筆，中斷
+        if (String((page[0] as any).id) === firstId) { done = true; break }
 
-        // 過濾重複資料（以防萬一）
         const newItems = page.filter(item => !all.some(a => (a as any).id === (item as any).id))
         all = all.concat(newItems)
 
-        // 如果該頁無法塞滿，代表這就是最後一頁了
-        if (page.length < PAGE_SIZE) {
-          batchFinished = true
-          break
-        }
+        if (page.length < PAGE_SIZE) { done = true; break }
       }
 
-      if (batchFinished) break
-      currentOffset += PAGE_SIZE * BATCH_REQUESTS
+      if (done) break
+      currentOffset += PAGE_SIZE * BATCH_SIZE
     }
 
     return all
