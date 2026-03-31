@@ -31,9 +31,9 @@ export default function AllocationPage() {
     [saleOrders],
   )
 
-  // 優先使用 UUID 作為配對組合的 Key
-  const getLineKey = useCallback((line: { productId?: string; productTemplateId?: string; name?: string }) => {
-    return line.productId || line.productTemplateId || line.name || '未知品項'
+  // 優先使用 productId 作為配對組合的 Key，如果沒給就用 name (避免同 Template 變體合併)
+  const getLineKey = useCallback((line: { productId?: string; name?: string }) => {
+    return line.productId || line.name || '未知品項'
   }, [])
 
   // 雙重比對提取函式：無論雙邊有無 UUID 都能保證找到對應庫存
@@ -326,7 +326,7 @@ export default function AllocationPage() {
                         const thisQty = edits[editKey] !== undefined
                           ? parseFloat(edits[editKey]) || 0
                           : line.actualDeliveryQty
-                        const available = purchasedQtyMap[lineKey] || 0
+                        const available = getAvailableQty(line as any, purchasedQtyMap)
                         const othersTotal = getAllocatedTotal(lineKey, order.id)
                         const remaining = Math.max(0, available - othersTotal)
                         const overLimit = thisQty > remaining
