@@ -251,7 +251,6 @@ export async function autoAddToPurchaseOrder(
           product_qty: line.quantity,
           name: line.name,
           price_unit: 0,
-          custom_data: { received: false },
         })
       }
     }

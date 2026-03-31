@@ -1,7 +1,9 @@
 /**
- * 銷售訂單 API — 嚴格 AI GO 標準
+ * 銷售訂單 API — 嚴格 AI GO 標準（零 custom_data 依賴）
  *
  * sale_orders.state: draft | sent | sale | done | cancel
+ * sale_orders.note: JSON 存 { driver, allocated }
+ * sale_order_lines.qty_delivered: 實際出貨量
  */
 import { db } from './client'
 import { isUUID } from '../utils/displayHelpers'
@@ -11,13 +13,13 @@ import { getUomMap, resolveUom } from './stock'
 
 export interface SaleOrder {
   id: string
-  name: string           // 訂單編號（如 S00001）
-  state: string          // draft | sent | sale | done | cancel
+  name: string
+  state: string
   date: string
-  customerName: string   // 已解析的客戶名稱
+  customerName: string
   totalAmount: number
   note: string
-  driver: string         // 指派的司機名（from custom_data.driver）
+  driver: string         // 指派的司機名（from note JSON）
   allocated: boolean     // 是否已完成分配
   lines: SaleOrderLine[]
 }
@@ -26,12 +28,35 @@ export interface SaleOrderLine {
   id: string
   orderId: string
   productTemplateId: string
-  name: string           // 品名
-  quantity: number        // 客戶下單量
-  actualDeliveryQty: number  // 實際出貨量（分配時填入）
+  name: string
+  quantity: number
+  actualDeliveryQty: number  // 實際出貨量（from qty_delivered）
   unitPrice: number
   subtotal: number
-  uom: string             // 單位名稱
+  uom: string
+}
+
+// ─── note JSON 解析 ───
+
+interface NoteData {
+  driver?: string
+  allocated?: boolean
+  text?: string            // 原始備註文字
+}
+
+/** 解析 note 欄位 — 嘗試作為 JSON，失敗則視為純文字 */
+const parseNote = (raw: any): NoteData => {
+  if (!raw) return {}
+  const str = String(raw).trim()
+  if (str.startsWith('{')) {
+    try { return JSON.parse(str) } catch { /* fallthrough */ }
+  }
+  return { text: str }
+}
+
+/** 將 NoteData 序列化為 note 欄位值 */
+const serializeNote = (data: NoteData): string => {
+  return JSON.stringify(data)
 }
 
 // ─── 名稱解析 ───
@@ -54,20 +79,18 @@ export const getSaleOrders = async (): Promise<SaleOrder[]> => {
     db.query('product_templates'),
   ])
 
-  // 客戶 UUID → 名稱
   const customerMap: Record<string, string> = {}
   ;(customers || []).forEach((c: any) => {
     customerMap[String(c.id)] = c.name || ''
   })
 
-  // product_template_id → 單位名稱
   const productUom: Record<string, string> = {}
   products.forEach((p: any) => {
     productUom[String(p.id)] = resolveUom(p.uom_id, uomMap)
   })
 
   return orders.map((o: any) => {
-    const customData = o.custom_data || {}
+    const noteData = parseNote(o.note)
     return {
       id: String(o.id),
       name: o.name || String(o.id),
@@ -75,13 +98,12 @@ export const getSaleOrders = async (): Promise<SaleOrder[]> => {
       date: o.date_order ? String(o.date_order).split(' ')[0] : '',
       customerName: resolveCustomerName(o.customer_id, customerMap),
       totalAmount: o.amount_total || 0,
-      note: o.note || '',
-      driver: customData.driver || '',
-      allocated: customData.allocated === true,
+      note: noteData.text || '',
+      driver: noteData.driver || '',
+      allocated: noteData.allocated === true,
       lines: lines
         .filter((l: any) => (Array.isArray(l.order_id) ? l.order_id[0] : l.order_id) === o.id)
         .map((l: any) => {
-          const lineCustomData = l.custom_data || {}
           const ptId = Array.isArray(l.product_template_id)
             ? String(l.product_template_id[0])
             : String(l.product_template_id || '')
@@ -91,7 +113,7 @@ export const getSaleOrders = async (): Promise<SaleOrder[]> => {
             productTemplateId: ptId,
             name: l.name || '未知商品',
             quantity: l.product_uom_qty || 0,
-            actualDeliveryQty: lineCustomData.actual_delivery_qty ?? 0,
+            actualDeliveryQty: l.qty_delivered || 0,
             unitPrice: l.price_unit || 0,
             subtotal: l.price_subtotal || 0,
             uom: productUom[ptId] || '單位',
@@ -106,20 +128,25 @@ export const updateSaleOrderState = async (id: string, state: string) => {
   return await db.update('sale_orders', id, { state })
 }
 
-/** 更新銷售訂單的分配資訊（司機、分配完成狀態） */
+/** 更新銷售訂單的分配資訊（司機、分配完成狀態）— 存在 note 欄位 */
 export const updateSaleOrderAllocation = async (
   orderId: string,
   data: { driver?: string; allocated?: boolean },
 ) => {
-  return await db.update('sale_orders', orderId, { custom_data: data })
+  // 先讀取現有 note，合併後寫回
+  const orders = await db.query('sale_orders', { limit: 200 })
+  const order = orders.find((o: any) => String(o.id) === orderId)
+  const existing = parseNote(order?.note)
+  const merged = { ...existing, ...data }
+  return await db.update('sale_orders', orderId, { note: serializeNote(merged) })
 }
 
-/** 更新銷售訂單品項的實際出貨量 */
+/** 更新銷售訂單品項的實際出貨量 — 使用原生 qty_delivered */
 export const updateSaleOrderLineDelivery = async (
   lineId: string,
   actualDeliveryQty: number,
 ) => {
   return await db.update('sale_order_lines', lineId, {
-    custom_data: { actual_delivery_qty: actualDeliveryQty },
+    qty_delivered: actualDeliveryQty,
   })
 }
