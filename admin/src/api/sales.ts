@@ -94,7 +94,7 @@ export const getSaleOrders = async (): Promise<SaleOrder[]> => {
             actualDeliveryQty: lineCustomData.actual_delivery_qty ?? 0,
             unitPrice: l.price_unit || 0,
             subtotal: l.price_subtotal || 0,
-            uom: productUom[ptId] || '',
+            uom: productUom[ptId] || '單位',
           }
         }),
     }
