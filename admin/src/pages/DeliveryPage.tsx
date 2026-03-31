@@ -1,76 +1,54 @@
 /**
- * Step 4: 出貨配送 — 逐筆銷售訂單出貨 (sale → done)
+ * Step 4: 出貨配送 — 按司機篩選、確認送達
  */
 import { useState, useMemo, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
 import { updateSaleOrderState } from '../api/sales'
-import { isUUID } from '../utils/displayHelpers'
-import { shortId } from '../utils/displayHelpers'
 import ConfirmDialog from '../components/ConfirmDialog'
-import SearchInput from '../components/SearchInput'
-import StatusDropdown from '../components/StatusDropdown'
-import Pagination from '../components/Pagination'
-
-const stateOptions = [
-  { value: 'all', label: '全部' },
-  { value: 'sale', label: '待出貨' },
-  { value: 'done', label: '已送達' },
-]
-
-const PAGE_SIZE = 10
+import { shortId } from '../utils/displayHelpers'
 
 export default function DeliveryPage() {
-  const { saleOrders, products, loadSales, loadProducts } = useAdminStore()
+  const { saleOrders, loadAll } = useAdminStore()
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
+  const [driverFilter, setDriverFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [page, setPage] = useState(1)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  useEffect(() => {
-    Promise.all([loadSales(), loadProducts()]).then(() => setLoading(false))
-  }, [])
+  useEffect(() => { loadAll().then(() => setLoading(false)) }, [])
 
-  // 產品名稱解析：line.name → product_templates 查找 → fallback
-  const resolveProductName = (line: { name: string; productTemplateId: string }) => {
-    if (line.name && !isUUID(line.name)) return line.name
-    if (line.productTemplateId) {
-      const p = products.find(p => p.id === line.productTemplateId)
-      if (p?.name) return p.name
-    }
-    return '未知商品'
-  }
-
+  // 已確認 + 已分配的訂單（等待出貨 or 已送達）
   const deliverableOrders = useMemo(() => {
-    let list = saleOrders.filter(o => o.state === 'sale' || o.state === 'done')
-    if (filter !== 'all') list = list.filter(o => o.state === filter)
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(o =>
-        o.customerName.toLowerCase().includes(q) ||
-        shortId(o.name).toLowerCase().includes(q),
-      )
+    let list = saleOrders.filter(o =>
+      (o.state === 'sale' && o.allocated) || o.state === 'done',
+    )
+    if (driverFilter !== 'all') {
+      list = list.filter(o => o.driver === driverFilter)
     }
-    // 待出貨排前面
     return list.sort((a, b) => (a.state === 'sale' ? -1 : 1) - (b.state === 'sale' ? -1 : 1))
-  }, [saleOrders, filter, search])
+  }, [saleOrders, driverFilter])
 
-  const totalPages = Math.ceil(deliverableOrders.length / PAGE_SIZE)
-  const paged = deliverableOrders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  // 取得所有有訂單的司機名（用於篩選）
+  const activeDrivers = useMemo(() => {
+    const set = new Set<string>()
+    saleOrders
+      .filter(o => (o.state === 'sale' && o.allocated) || o.state === 'done')
+      .forEach(o => { if (o.driver) set.add(o.driver) })
+    return Array.from(set)
+  }, [saleOrders])
 
   const handleConfirm = async () => {
     if (!confirmId) return
     try {
       await updateSaleOrderState(confirmId, 'done')
-      await loadSales(true)
+      await loadAll(true)
     } finally {
       setConfirmId(null)
     }
   }
 
   const confirmOrder = saleOrders.find(o => o.id === confirmId)
+  const pendingCount = deliverableOrders.filter(o => o.state === 'sale').length
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">載入中...</div>
 
@@ -82,22 +60,38 @@ export default function DeliveryPage() {
             <BackButton />
             <div>
               <h1 className="text-xl font-bold text-gray-900">出貨配送</h1>
-              <p className="text-sm text-gray-400">{saleOrders.filter(o => o.state === 'sale').length} 筆待出貨</p>
+              <p className="text-sm text-gray-400">{pendingCount} 筆待出貨</p>
             </div>
           </div>
         </div>
-        <div className="flex gap-3">
-          <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="搜尋客戶、訂單..." className="flex-1 max-w-xs" />
-          <StatusDropdown value={filter} onChange={v => { setFilter(v); setPage(1) }} options={stateOptions} />
+        {/* 司機篩選 */}
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setDriverFilter('all')}
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              driverFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}>
+            全部
+          </button>
+          {activeDrivers.map(d => (
+            <button key={d} onClick={() => setDriverFilter(d)}
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                driverFilter === d ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+              }`}>
+              🚚 {d}
+            </button>
+          ))}
+          {activeDrivers.length === 0 && (
+            <span className="text-xs text-gray-400 py-1">尚無指派司機的訂單</span>
+          )}
         </div>
       </header>
 
       <div className="p-6 max-w-5xl mx-auto space-y-3">
-        {paged.length === 0 ? (
+        {deliverableOrders.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
-            {search || filter !== 'all' ? '無符合的訂單' : '目前沒有待出貨訂單'}
+            {driverFilter !== 'all' ? '此司機無訂單' : '目前無待出貨訂單（請先完成出庫分配）'}
           </div>
-        ) : paged.map(order => {
+        ) : deliverableOrders.map(order => {
           const isExpanded = expanded === order.id
           const canDeliver = order.state === 'sale'
           return (
@@ -107,9 +101,16 @@ export default function DeliveryPage() {
                 <div className="text-left">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-gray-900">{order.customerName}</p>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${canDeliver ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      canDeliver ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                    }`}>
                       {canDeliver ? '待出貨' : '已送達'}
                     </span>
+                    {order.driver && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                        🚚 {order.driver}
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-400">{shortId(order.name)} · {order.date} · {order.lines.length} 品項</p>
                 </div>
@@ -117,7 +118,7 @@ export default function DeliveryPage() {
                   {canDeliver && (
                     <button onClick={e => { e.stopPropagation(); setConfirmId(order.id) }}
                       className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
-                      確認出貨
+                      確認送達
                     </button>
                   )}
                   <span className="text-gray-400 text-xl">{isExpanded ? '▾' : '▸'}</span>
@@ -125,13 +126,31 @@ export default function DeliveryPage() {
               </button>
               {isExpanded && (
                 <div className="border-t border-gray-100 px-4 py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {order.lines.map((line, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-gray-50 rounded text-xs text-gray-500">
-                        {resolveProductName(line)} x{line.quantity}
-                      </span>
-                    ))}
-                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 text-xs">
+                        <th className="py-1 text-left">品名</th>
+                        <th className="py-1 text-right">下單量</th>
+                        <th className="py-1 text-right">實際出貨量</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.lines.map(line => (
+                        <tr key={line.id} className="border-t border-gray-50">
+                          <td className="py-1.5 font-medium">{line.name}</td>
+                          <td className="py-1.5 text-right text-gray-500">
+                            {line.quantity} <span className="text-xs text-gray-400">{line.uom}</span>
+                          </td>
+                          <td className="py-1.5 text-right font-bold">
+                            {line.actualDeliveryQty > 0
+                              ? <>{line.actualDeliveryQty} <span className="text-xs text-gray-400 font-normal">{line.uom}</span></>
+                              : <span className="text-gray-300">—</span>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -139,13 +158,11 @@ export default function DeliveryPage() {
         })}
       </div>
 
-      <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
-
       <ConfirmDialog
         open={!!confirmId}
-        title="確認出貨？"
+        title="確認送達？"
         message={`訂單 ${shortId(confirmOrder?.name)}（${confirmOrder?.customerName}）將標記為「已送達」。此操作不可逆。`}
-        confirmText="確認出貨"
+        confirmText="確認送達"
         variant="warning"
         onConfirm={handleConfirm}
         onCancel={() => setConfirmId(null)}

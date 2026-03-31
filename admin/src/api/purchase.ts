@@ -10,6 +10,7 @@
  * 品項到貨狀態：用 purchase_order_lines.custom_data.received 追蹤
  */
 import { db } from './client'
+import { getUomMap } from './stock'
 import { isUUID } from '../utils/displayHelpers'
 
 // ─── 型別 ───
@@ -31,10 +32,12 @@ export interface PurchaseOrderLine {
   orderId: string
   productTemplateId: string
   name: string
-  quantity: number
+  quantity: number        // 需求量（唯讀，自動累加）
+  actualQty: number       // 實際採購量（可編輯）
   unitPrice: number
-  subtotal: number
-  received: boolean       // 是否已到貨（from custom_data）
+  subtotal: number        // = actualQty × unitPrice
+  uom: string             // 單位名稱
+  received: boolean       // 是否已到貨
 }
 
 // 供應商對應表：product_template_id → supplier_id
@@ -87,11 +90,17 @@ export const getSupplierMap = async (): Promise<Record<string, string>> => {
 }
 
 export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
-  const [orders, lines, supplierNameMap] = await Promise.all([
+  const [orders, lines, supplierNameMap, uomMap, products] = await Promise.all([
     db.query('purchase_orders'),
     db.query('purchase_order_lines'),
     getSupplierMap(),
+    getUomMap(),
+    db.query('product_templates'),
   ])
+
+  // product_template_id → uom_id → 單位名稱
+  const productUom: Record<string, string> = {}
+  products.forEach((p: any) => { productUom[String(p.id)] = uomMap[String(p.uom_id)] || '單位' })
 
   return orders.map((o: any) => ({
     id: String(o.id),
@@ -106,16 +115,21 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
       .filter((l: any) => resolveId(l.order_id) === String(o.id))
       .map((l: any) => {
         const customData = l.custom_data || {}
+        const ptId = resolveId(l.product_template_id || l.product_id)
+        const actualQty = customData.actual_qty ?? 0
+        const unitPrice = l.price_unit || 0
         return {
           id: String(l.id),
           orderId: String(o.id),
-          productTemplateId: resolveId(l.product_template_id || l.product_id),
+          productTemplateId: ptId,
           name: l.name || '未知商品',
           quantity: l.product_qty || 0,
-          unitPrice: l.price_unit || 0,
-          subtotal: l.price_subtotal || 0,
+          actualQty,
+          unitPrice,
+          subtotal: Math.round(actualQty * unitPrice * 100) / 100,
+          uom: productUom[ptId] || '單位',
           received: customData.received === true,
-        }
+         }
       }),
   }))
 }
@@ -135,23 +149,27 @@ export const updatePurchaseOrderLine = async (
 
 /**
  * 標記品項已到貨（不可逆）
- * 同時檢查：若該 PO 的所有 lines 都到貨，自動將 PO 標為 done
+ * 同時儲存實際採購量，並檢查是否全部到齊
  */
 export const markLineReceived = async (
   lineId: string,
   poId: string,
   allLines: PurchaseOrderLine[],
+  actualQty: number,
 ) => {
-  // 1. 標記此 line 到貨
+  // 1. 標記此 line 到貨 + 寫入實際採購量
   await db.update('purchase_order_lines', lineId, {
-    custom_data: { received: true, received_at: new Date().toISOString().slice(0, 10) },
+    custom_data: {
+      received: true,
+      received_at: new Date().toISOString().slice(0, 10),
+      actual_qty: actualQty,
+    },
   })
 
   // 2. 檢查是否所有 lines 都已到貨
   const otherLines = allLines.filter(l => l.id !== lineId)
   const allReceived = otherLines.every(l => l.received)
   if (allReceived) {
-    // 所有品項到齊 → PO 標為 done
     await updatePurchaseOrderState(poId, 'done')
   }
 }
