@@ -1,7 +1,10 @@
 /**
  * Step 2: 採購管理 — 按供應商分組、需求量vs實際採購量、逐品項到貨
+ *
+ * 自動儲存：實際採購量和單價在 blur 或停止輸入後自動存到 DB
+ * 到貨狀態：qty_received > 0 即視為已到貨
  */
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
 import {
@@ -18,9 +21,9 @@ export default function PurchasePage() {
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null)
-  const [saving, setSaving] = useState(false)
   // 本地編輯：{ lineId: { actualQty, price } }
   const [edits, setEdits] = useState<Record<string, { actualQty?: string; price?: string }>>({})
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => { loadAll().then(() => setLoading(false)) }, [])
 
@@ -39,25 +42,35 @@ export default function PurchasePage() {
     })
   }
 
-  const updateEdit = useCallback((lineId: string, field: 'actualQty' | 'price', value: string) => {
-    setEdits(prev => ({ ...prev, [lineId]: { ...prev[lineId], [field]: value } }))
+  // 自動儲存（debounce 800ms）
+  const autoSave = useCallback((lineId: string, field: 'actualQty' | 'price', value: string, originalLine: { quantity: number; unitPrice: number }) => {
+    // 清除之前的 timer
+    if (saveTimers.current[`${lineId}_${field}`]) {
+      clearTimeout(saveTimers.current[`${lineId}_${field}`])
+    }
+    saveTimers.current[`${lineId}_${field}`] = setTimeout(async () => {
+      try {
+        if (field === 'price') {
+          const v = parseFloat(value)
+          if (!isNaN(v) && v !== originalLine.unitPrice) {
+            await updatePurchaseOrderLine(lineId, { price_unit: v })
+          }
+        } else {
+          const v = parseFloat(value)
+          if (!isNaN(v) && v >= 0) {
+            await updatePurchaseOrderLine(lineId, { qty_received: v })
+          }
+        }
+      } catch (err) {
+        console.error('[autoSave] 儲存失敗:', err)
+      }
+    }, 800)
   }, [])
 
-  // 儲存單個 line 的編輯（只有單價）
-  const saveLine = async (lineId: string, originalPrice: number) => {
-    const edit = edits[lineId]
-    if (!edit?.price) return
-    setSaving(true)
-    try {
-      await updatePurchaseOrderLine(lineId, {
-        price_unit: parseFloat(edit.price) || originalPrice,
-      })
-      setEdits(prev => { const next = { ...prev }; delete next[lineId]; return next })
-      await loadAll(true)
-    } finally {
-      setSaving(false)
-    }
-  }
+  const updateEdit = useCallback((lineId: string, field: 'actualQty' | 'price', value: string, originalLine: { quantity: number; unitPrice: number }) => {
+    setEdits(prev => ({ ...prev, [lineId]: { ...prev[lineId], [field]: value } }))
+    autoSave(lineId, field, value, originalLine)
+  }, [autoSave])
 
   // 標記到貨前的驗證：實際採購量必須 > 0
   const tryMarkReceived = (lineId: string, lineName: string, poId: string) => {
@@ -81,7 +94,7 @@ export default function PurchasePage() {
       const po = purchaseOrders.find(p => p.id === confirmTarget.poId)
       if (!po) return
 
-      // 先儲存單價
+      // 先存單價
       const edit = edits[confirmTarget.lineId]
       if (edit?.price) {
         await updatePurchaseOrderLine(confirmTarget.lineId, {
@@ -163,7 +176,7 @@ export default function PurchasePage() {
                         <th className="py-1 text-right w-32">實際採購量</th>
                         <th className="py-1 text-right w-28">單價</th>
                         <th className="py-1 text-right w-24">小計</th>
-                        <th className="py-1 text-center w-28">狀態</th>
+                        <th className="py-1 text-center w-24">狀態</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -171,59 +184,44 @@ export default function PurchasePage() {
                         const edit = edits[line.id]
                         const actualQty = edit?.actualQty !== undefined ? parseFloat(edit.actualQty) || 0 : line.actualQty
                         const price = edit?.price !== undefined ? parseFloat(edit.price) || 0 : line.unitPrice
-                        const hasEdit = !!(edit?.price)
 
                         return (
                           <tr key={line.id} className={`border-t border-gray-50 ${line.received ? 'opacity-50' : ''}`}>
                             <td className="py-2 font-medium">{line.name}</td>
-                            {/* 需求量：唯讀 + 單位 */}
                             <td className="py-2 text-right text-gray-500">
                               {line.quantity} <span className="text-xs text-gray-400">{line.uom}</span>
                             </td>
-                            {/* 實際採購量：可編輯 + 單位 */}
                             <td className="py-2 text-right">
                               {isDraft && !line.received ? (
                                 <div className="flex items-center justify-end gap-1">
                                   <input type="number" step="0.01" min="0"
                                     value={edit?.actualQty ?? (line.actualQty || '')}
-                                    onChange={e => updateEdit(line.id, 'actualQty', e.target.value)}
+                                    onChange={e => updateEdit(line.id, 'actualQty', e.target.value, line)}
                                     placeholder="填入"
-                                    className="w-20 text-right border border-gray-200 rounded px-2 py-1 text-sm" />
+                                    className="w-20 text-right border border-gray-200 rounded px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
                                   <span className="text-xs text-gray-400">{line.uom}</span>
                                 </div>
                               ) : (
                                 <span>{line.actualQty} <span className="text-xs text-gray-400">{line.uom}</span></span>
                               )}
                             </td>
-                            {/* 單價：可編輯 */}
                             <td className="py-2 text-right">
                               {isDraft && !line.received ? (
                                 <input type="number" step="0.01" min="0"
                                   value={edit?.price ?? String(line.unitPrice)}
-                                  onChange={e => updateEdit(line.id, 'price', e.target.value)}
-                                  className="w-24 text-right border border-gray-200 rounded px-2 py-1 text-sm" />
+                                  onChange={e => updateEdit(line.id, 'price', e.target.value, line)}
+                                  className="w-24 text-right border border-gray-200 rounded px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
                               ) : `$${line.unitPrice}`}
                             </td>
-                            {/* 小計 = 實際採購量 × 單價 */}
                             <td className="py-2 text-right font-bold">${Math.round(actualQty * price).toLocaleString()}</td>
-                            {/* 狀態按鈕 */}
                             <td className="py-2 text-center">
                               {line.received ? (
                                 <span className="text-green-600 font-medium text-xs">✓ 已到</span>
                               ) : isDraft ? (
-                                <div className="flex items-center justify-center gap-1">
-                                  {hasEdit && (
-                                    <button onClick={() => saveLine(line.id, line.unitPrice)}
-                                      disabled={saving}
-                                      className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-medium hover:bg-orange-200 disabled:opacity-50">
-                                      💾
-                                    </button>
-                                  )}
-                                  <button onClick={() => tryMarkReceived(line.id, line.name, po.id)}
-                                    className="px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
-                                    已採購到
-                                  </button>
-                                </div>
+                                <button onClick={() => tryMarkReceived(line.id, line.name, po.id)}
+                                  className="px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
+                                  已採購到
+                                </button>
                               ) : (
                                 <span className="text-gray-400 text-xs">待採購</span>
                               )}
