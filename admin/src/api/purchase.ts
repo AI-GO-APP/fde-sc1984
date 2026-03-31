@@ -7,7 +7,8 @@
  * - product_supplierinfo.product_tmpl_id → supplier_id
  * - 無對應的品項歸「未定義供應商」
  *
- * 品項到貨狀態：用 purchase_order_lines.custom_data.received 追蹤
+ * 品項到貨狀態：qty_received > 0 即視為已到貨
+ * 實際採購量：存在 qty_received 欄位
  */
 import { db } from './client'
 import { getUomMap, resolveUom } from './stock'
@@ -114,9 +115,8 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
     lines: lines
       .filter((l: any) => resolveId(l.order_id) === String(o.id))
       .map((l: any) => {
-        const customData = l.custom_data || {}
         const ptId = resolveId(l.product_template_id || l.product_id)
-        const actualQty = customData.actual_qty ?? 0
+        const actualQty = l.qty_received || 0
         const unitPrice = l.price_unit || 0
         return {
           id: String(l.id),
@@ -128,7 +128,7 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
           unitPrice,
           subtotal: Math.round(actualQty * unitPrice * 100) / 100,
           uom: productUom[ptId] || '單位',
-          received: customData.received === true,
+          received: actualQty > 0,
          }
       }),
   }))
@@ -139,17 +139,17 @@ export const updatePurchaseOrderState = async (id: string, state: string) => {
   return await db.update('purchase_orders', id, { state })
 }
 
-/** 更新採購單明細行（數量 / 單價） */
+/** 更新採購單明細行（數量 / 單價 / 實際採購量） */
 export const updatePurchaseOrderLine = async (
   lineId: string,
-  data: { product_qty?: number; price_unit?: number },
+  data: { product_qty?: number; price_unit?: number; qty_received?: number },
 ) => {
   return await db.update('purchase_order_lines', lineId, data)
 }
 
 /**
  * 標記品項已到貨（不可逆）
- * 同時儲存實際採購量，並檢查是否全部到齊
+ * 寫入 qty_received，並檢查是否全部到齊
  */
 export const markLineReceived = async (
   lineId: string,
@@ -157,13 +157,9 @@ export const markLineReceived = async (
   allLines: PurchaseOrderLine[],
   actualQty: number,
 ) => {
-  // 1. 標記此 line 到貨 + 寫入實際採購量
+  // 1. 寫入實際採購量
   await db.update('purchase_order_lines', lineId, {
-    custom_data: {
-      received: true,
-      received_at: new Date().toISOString().slice(0, 10),
-      actual_qty: actualQty,
-    },
+    qty_received: actualQty,
   })
 
   // 2. 檢查是否所有 lines 都已到貨
