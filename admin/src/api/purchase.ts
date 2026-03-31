@@ -11,7 +11,7 @@
  * 實際採購量：存在 qty_received 欄位
  */
 import { db } from './client'
-import { getUomMap, resolveUom } from './stock'
+// 參照資料由 refCache 統一管理
 import { isUUID } from '../utils/displayHelpers'
 
 // ─── 型別 ───
@@ -91,31 +91,29 @@ export const getSupplierMap = async (): Promise<Record<string, string>> => {
 }
 
 import { getOrderDateBounds } from '../utils/dateHelpers'
+import { getCachedSupplierMap, getCachedProductUomMap } from './refCache'
 
 export const getPurchaseOrders = async (targetDate: string): Promise<PurchaseOrder[]> => {
-  // 取出精準的 Odoo UTC [開始, 結束) 界線
+  // 取出精準的 Odoo UTC [開始, 結束) 界線（用於前端篩選）
   const { start, end } = getOrderDateBounds(targetDate)
 
-  // 第一階段平行拉取母單、供應商、單位、活性商品
-  const [orders, supplierNameMap, uomMap, products] = await Promise.all([
+  // 平行拉取：活躍訂單 + 快取的參照資料
+  const [allOrders, supplierNameMap, productUom] = await Promise.all([
     db.query('purchase_orders', { 
-      select_columns: ['id', 'name', 'state', 'date_order', 'supplier_id', 'amount_total', 'note'],
+      select_columns: ['id', 'name', 'state', 'date_order', 'supplier_id', 'amount_total'],
       filters: [
-        { column: 'date_order', op: 'ge', value: start },
-        { column: 'date_order', op: 'lt', value: end },
         { column: 'state', op: 'in', value: ['draft', 'sent', 'purchase'] }
       ]
     }),
-    getSupplierMap(),
-    getUomMap(),
-    db.query('product_templates', { 
-      select_columns: ['id', 'uom_id'],
-      filters: [
-        { column: 'sale_ok', op: 'eq', value: true },
-        { column: 'active', op: 'eq', value: true },
-      ]
-    }),
+    getCachedSupplierMap(),
+    getCachedProductUomMap(),
   ])
+
+  // 前端做 02:00 UTC+8 週期過濾（後端 proxy 不支援 ge/lt 運算子）
+  const orders = allOrders.filter((o: any) => {
+    const d = String(o.date_order || '')
+    return d >= start && d < end
+  })
 
   // 第二階段：拉出這批採購單專屬的子明細
   const orderIds = orders.map((o: any) => o.id)
@@ -126,10 +124,6 @@ export const getPurchaseOrders = async (targetDate: string): Promise<PurchaseOrd
       filters: [{ column: 'order_id', op: 'in', value: orderIds }]
     })
   }
-
-  // product_template_id → uom_id → 單位名稱
-  const productUom: Record<string, string> = {}
-  products.forEach((p: any) => { productUom[String(p.id)] = resolveUom(p.uom_id, uomMap) })
 
   return orders.map((o: any) => ({
     id: String(o.id),
