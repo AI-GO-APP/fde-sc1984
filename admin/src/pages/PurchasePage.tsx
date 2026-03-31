@@ -7,6 +7,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
+import { useUIStore } from '../store/useUIStore'
 import {
   updatePurchaseOrderLine,
   markLineReceived,
@@ -18,14 +19,14 @@ type ConfirmTarget = { lineId: string; lineName: string; poId: string; actualQty
 
 export default function PurchasePage() {
   const { purchaseOrders, loadAll } = useAdminStore()
-  const [loading, setLoading] = useState(true)
+  const { withLoading, toast } = useUIStore()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null)
   // 本地編輯：{ lineId: { actualQty, price } }
   const [edits, setEdits] = useState<Record<string, { actualQty?: string; price?: string }>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-  useEffect(() => { loadAll().then(() => setLoading(false)) }, [])
+  useEffect(() => { loadAll() }, [])
 
   const activePOs = useMemo(() =>
     purchaseOrders
@@ -62,7 +63,7 @@ export default function PurchasePage() {
           }
         }
       } catch (err) {
-        console.error('[autoSave] 儲存失敗:', err)
+        toast('error', '自動儲存失敗，請重試')
       }
     }, 800)
   }, [])
@@ -90,10 +91,10 @@ export default function PurchasePage() {
   // 標記到貨（不可逆）
   const handleMarkReceived = async () => {
     if (!confirmTarget) return
-    try {
-      const po = purchaseOrders.find(p => p.id === confirmTarget.poId)
-      if (!po) return
+    const po = purchaseOrders.find(p => p.id === confirmTarget.poId)
+    if (!po) { setConfirmTarget(null); return }
 
+    await withLoading(async () => {
       // 先存單價
       const edit = edits[confirmTarget.lineId]
       if (edit?.price) {
@@ -110,16 +111,13 @@ export default function PurchasePage() {
       )
       setEdits(prev => { const next = { ...prev }; delete next[confirmTarget.lineId]; return next })
       await loadAll(true)
-    } finally {
-      setConfirmTarget(null)
-    }
+    }, '記錄到貨中...', '已標記為到貨')
+    setConfirmTarget(null)
   }
 
   const totalPending = activePOs
     .filter(po => po.state === 'draft')
     .reduce((sum, po) => sum + po.lines.filter(l => !l.received).length, 0)
-
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">載入中...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">

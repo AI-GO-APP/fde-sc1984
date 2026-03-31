@@ -4,13 +4,14 @@ import { login } from '../api/auth'
 import { redirectToLineLogin } from '../api/lineAuth'
 import { useAuthStore } from '../store/useAuthStore'
 import { ensureCustomerForCurrentUser } from '../api/customerSync'
+import { useUIStore } from '../store/useUIStore'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const { setAuth, isLoggedIn } = useAuthStore()
+  const { withLoading } = useUIStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   // If already logged in, show welcome
@@ -43,19 +44,14 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) return setError('請填寫郵箱與密碼')
-    setLoading(true)
     setError('')
-    try {
+    await withLoading(async () => {
       const res = await login(email, password)
       setAuth(res.access_token, res.refresh_token, res.user, res.expires_in)
       // 非同步同步 Customer（不阻塞導航）
       ensureCustomerForCurrentUser()
       navigate('/order')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '登入失敗')
-    } finally {
-      setLoading(false)
-    }
+    }, '登入中...', '登入成功')
   }
 
   return (
@@ -105,9 +101,9 @@ export default function LoginPage() {
 
           {error && <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
-          <button type="submit" disabled={loading}
-            className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? '登入中...' : '登入'}
+          <button type="submit"
+            className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors">
+            登入
           </button>
         </form>
 

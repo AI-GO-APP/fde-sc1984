@@ -3,15 +3,16 @@ import { useNavigate, Link } from 'react-router-dom'
 import { register } from '../api/auth'
 import { useAuthStore } from '../store/useAuthStore'
 import { ensureCustomerForCurrentUser } from '../api/customerSync'
+import { useUIStore } from '../store/useUIStore'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
   const { setAuth } = useAuthStore()
+  const { withLoading } = useUIStore()
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -19,19 +20,14 @@ export default function RegisterPage() {
     if (!displayName || !email || !password) return setError('請填寫所有欄位')
     if (password !== confirmPw) return setError('密碼不一致')
     if (password.length < 6) return setError('密碼至少 6 字元')
-    setLoading(true)
     setError('')
-    try {
+    await withLoading(async () => {
       const res = await register(email, password, displayName)
       setAuth(res.access_token, res.refresh_token, res.user, res.expires_in)
       // 非同步同步 Customer（不阻塞導航）
       ensureCustomerForCurrentUser()
       navigate('/order')
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : '註冊失敗')
-    } finally {
-      setLoading(false)
-    }
+    }, '註冊中...', '註冊成功')
   }
 
   return (
@@ -73,9 +69,9 @@ export default function RegisterPage() {
 
           {error && <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
-          <button type="submit" disabled={loading}
-            className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-            {loading ? '註冊中...' : '註冊'}
+          <button type="submit"
+            className="w-full py-3 bg-primary text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors">
+            註冊
           </button>
         </form>
 

@@ -4,6 +4,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
+import { useUIStore } from '../store/useUIStore'
 import { updateSaleOrderState } from '../api/sales'
 import { autoAddToPurchaseOrder } from '../api/purchase'
 import SearchInput from '../components/SearchInput'
@@ -31,14 +32,14 @@ const PAGE_SIZE = 10
 
 export default function OrdersPage() {
   const { saleOrders, loadSales } = useAdminStore()
-  const [loading, setLoading] = useState(true)
+  const { withLoading } = useUIStore()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  useEffect(() => { loadSales().then(() => setLoading(false)) }, [])
+  useEffect(() => { loadSales() }, [])
 
   const filtered = useMemo(() => {
     let list = saleOrders
@@ -58,11 +59,11 @@ export default function OrdersPage() {
 
   const handleConfirm = async () => {
     if (!confirmId) return
-    try {
+    const order = saleOrders.find(o => o.id === confirmId)
+    await withLoading(async () => {
       // 1. 確認訂單 (draft → sale)
       await updateSaleOrderState(confirmId, 'sale')
       // 2. 自動將品項加入採購單（按供應商分組）
-      const order = saleOrders.find(o => o.id === confirmId)
       if (order) {
         await autoAddToPurchaseOrder(
           order.lines.map(l => ({
@@ -74,14 +75,11 @@ export default function OrdersPage() {
       }
       // 3. 重新載入
       await useAdminStore.getState().loadAll(true)
-    } finally {
-      setConfirmId(null)
-    }
+    }, '確認訂單中...', '訂單已確認')
+    setConfirmId(null)
   }
 
   const confirmOrder = saleOrders.find(o => o.id === confirmId)
-
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">載入中...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">

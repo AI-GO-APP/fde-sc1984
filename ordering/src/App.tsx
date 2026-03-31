@@ -7,6 +7,9 @@ import OrdersPage from './pages/OrdersPage'
 import LineCallbackPage from './pages/LineCallbackPage'
 import { useAuthStore } from './store/useAuthStore'
 
+import LoadingCover from './components/LoadingCover'
+import ToastContainer from './components/ToastContainer'
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isLoggedIn } = useAuthStore()
   return isLoggedIn ? <>{children}</> : <Navigate to="/login" replace />
@@ -15,6 +18,8 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <LoadingCover />
+      <ToastContainer />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
