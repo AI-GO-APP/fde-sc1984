@@ -5,10 +5,17 @@
 # 也可在 GitHub Actions 頁面手動觸發
 #
 # 必要 Secrets:
-#   STAGING_HOST       - VM IP/hostname
-#   STAGING_SSH_KEY    - SSH 私鑰
-#   VITE_API_KEY       - AI GO API Key (sk_live_xxx)
-#   VITE_APP_SLUG      - AI GO App ID (UUID)
+#   STAGING_HOST                 - VM IP/hostname
+#   STAGING_SSH_KEY              - SSH 私鑰
+#   --- Admin ---
+#   VITE_API_KEY                 - Admin API Key (sk_live_xxx)
+#   VITE_APP_SLUG                - Admin App ID (UUID)
+#   --- Ordering ---
+#   ORDERING_API_KEY             - Ordering API Key (sk_live_xxx)
+#   ORDERING_APP_SLUG            - Ordering App Slug
+#   LINE_CHANNEL_ID              - LINE Login Channel ID
+#   LINE_CHANNEL_SECRET          - LINE Login Channel Secret
+#   ORDERING_LINE_CALLBACK_URL   - LINE 登入回調 URL (staging)
 # ============================================================
 
 name: 部署到 Staging
@@ -35,7 +42,7 @@ jobs:
         host: ${{ secrets.STAGING_HOST }}
         username: deploy
         key: ${{ secrets.STAGING_SSH_KEY }}
-        envs: VITE_API_KEY,VITE_APP_SLUG
+        envs: VITE_API_KEY,VITE_APP_SLUG,ORDERING_API_KEY,ORDERING_APP_SLUG,LINE_CHANNEL_ID,LINE_CHANNEL_SECRET,ORDERING_LINE_CALLBACK_URL
         script: |
           set -e
           REPO_NAME="fde-sc1984"
@@ -49,31 +56,25 @@ jobs:
           git fetch origin main
           git reset --hard FETCH_HEAD
 
-          # 寫入 admin/.env（Vite build 用）— 用 printf 避免 heredoc 縮排問題
+          # ── Admin 前端 .env ──
           printf 'VITE_API_BASE=/api/v1\nVITE_API_KEY=%s\nVITE_APP_SLUG=%s\nVITE_AIGO_URL=https://ai-go.app\n' "$VITE_API_KEY" "$VITE_APP_SLUG" > admin/.env
 
-          # docker-compose 從根目錄 .env 讀取 build args
-          printf 'VITE_API_KEY=%s\nVITE_APP_SLUG=%s\n' "$VITE_API_KEY" "$VITE_APP_SLUG" > .env
+          # ── Ordering 前端 .env ──
+          printf 'VITE_API_BASE=/api/v1/open/proxy\nVITE_API_KEY=%s\nVITE_APP_SLUG=%s\nVITE_AUTH_BASE=/api/v1/custom-app-auth\nVITE_LINE_CHANNEL_ID=%s\nVITE_LINE_CALLBACK_URL=%s\n' "$ORDERING_API_KEY" "$ORDERING_APP_SLUG" "$LINE_CHANNEL_ID" "$ORDERING_LINE_CALLBACK_URL" > ordering/.env
+
+          # ── Ordering 後端 .env ──
+          printf 'LINE_CHANNEL_ID=%s\nLINE_CHANNEL_SECRET=%s\nAIGO_BASE=https://ai-go.app\nAPP_SLUG=%s\nPORT=3001\n' "$LINE_CHANNEL_ID" "$LINE_CHANNEL_SECRET" "$ORDERING_APP_SLUG" > ordering/backend/.env
+
+          # ── docker-compose 根目錄 .env（供 build args 使用）──
+          printf 'VITE_API_KEY=%s\nVITE_APP_SLUG=%s\nORDERING_API_KEY=%s\nORDERING_APP_SLUG=%s\nLINE_CHANNEL_ID=%s\nORDERING_LINE_CALLBACK_URL=%s\n' "$VITE_API_KEY" "$VITE_APP_SLUG" "$ORDERING_API_KEY" "$ORDERING_APP_SLUG" "$LINE_CHANNEL_ID" "$ORDERING_LINE_CALLBACK_URL" > .env
 
           echo "=== admin/.env ==="
           cat admin/.env
-          echo "=== .env ==="
-          cat .env
+          echo "=== ordering/.env ==="
+          cat ordering/.env
+          echo "=== ordering/backend/.env ==="
+          cat ordering/backend/.env | sed 's/LINE_CHANNEL_SECRET=.*/LINE_CHANNEL_SECRET=***/'
           echo "================"
-
-          # 確保 ordering .env 存在
-          for f in ordering/.env ordering/backend/.env; do
-            if [ ! -f "$f" ]; then
-              example="${f%.env}.env.example"
-              if [ -f "$example" ]; then
-                cp "$example" "$f"
-                echo "已從 $example 建立 $f"
-              else
-                touch "$f"
-                echo "已建立空的 $f"
-              fi
-            fi
-          done
 
           # 停止舊部署的容器
           OLD_DIR="/opt/apps/fde-apps"
@@ -90,3 +91,8 @@ jobs:
       env:
         VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
         VITE_APP_SLUG: ${{ secrets.VITE_APP_SLUG }}
+        ORDERING_API_KEY: ${{ secrets.ORDERING_API_KEY }}
+        ORDERING_APP_SLUG: ${{ secrets.ORDERING_APP_SLUG }}
+        LINE_CHANNEL_ID: ${{ secrets.LINE_CHANNEL_ID }}
+        LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
+        ORDERING_LINE_CALLBACK_URL: ${{ secrets.ORDERING_LINE_CALLBACK_URL }}

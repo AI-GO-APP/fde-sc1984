@@ -1,10 +1,6 @@
 import axios from 'axios';
 
 const AIGO_API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
-const APP_ID = import.meta.env.VITE_APP_SLUG;
-if (!APP_ID) {
-  console.error('[client] VITE_APP_SLUG 環境變數未設定');
-}
 
 export const apiClient = axios.create({
   baseURL: AIGO_API_BASE,

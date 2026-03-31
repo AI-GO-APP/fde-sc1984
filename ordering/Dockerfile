@@ -2,12 +2,27 @@
 FROM node:20-alpine AS build
 
 WORKDIR /app
-# Copy ordering package files
 COPY package.json package-lock.json* ./
 RUN npm install
 
-# Build frontend
 COPY . .
+
+# Vite 環境變數透過 Docker build ARG 注入
+ARG VITE_API_BASE=/api/v1/open/proxy
+ARG VITE_API_KEY
+ARG VITE_APP_SLUG
+ARG VITE_AUTH_BASE=/api/v1/custom-app-auth
+ARG VITE_LINE_CHANNEL_ID
+ARG VITE_LINE_CALLBACK_URL
+
+# 設為 ENV 供 Vite build 時讀取（import.meta.env.VITE_*）
+ENV VITE_API_BASE=$VITE_API_BASE
+ENV VITE_API_KEY=$VITE_API_KEY
+ENV VITE_APP_SLUG=$VITE_APP_SLUG
+ENV VITE_AUTH_BASE=$VITE_AUTH_BASE
+ENV VITE_LINE_CHANNEL_ID=$VITE_LINE_CHANNEL_ID
+ENV VITE_LINE_CALLBACK_URL=$VITE_LINE_CALLBACK_URL
+
 RUN npm run build
 
 
@@ -15,18 +30,16 @@ RUN npm run build
 FROM node:20-alpine
 
 WORKDIR /app/backend
-# Copy backend files and install production dependencies
+# 安裝後端依賴
 COPY backend/package.json backend/package-lock.json* ./
 RUN npm install --production
 
-# Copy backend source
+# 複製後端原始碼
 COPY backend/ ./
 
-# Copy built frontend assets to the parent dir expected by server.js
+# 複製前端建置產物
 COPY --from=build /app/dist /app/dist
 
-# Expose backend port
 EXPOSE 3001
 
-# Start the Node.js server
 CMD ["node", "server.js"]
