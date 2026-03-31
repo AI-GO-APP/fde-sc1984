@@ -5,7 +5,7 @@
  * 到貨狀態：qty_received > 0 即視為已到貨
  */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import BackButton from '../components/BackButton'
+import PageHeader from '../components/PageHeader'
 import { useAdminStore } from '../store/useAdminStore'
 import { useUIStore } from '../store/useUIStore'
 import {
@@ -18,7 +18,7 @@ import { shortId } from '../utils/displayHelpers'
 type ConfirmTarget = { lineId: string; lineName: string; poId: string; actualQty: number } | null
 
 export default function PurchasePage() {
-  const { purchaseOrders, loadAll } = useAdminStore()
+  const { targetDate, purchaseOrders, loadAll } = useAdminStore()
   const { withLoading, toast } = useUIStore()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null)
@@ -26,7 +26,7 @@ export default function PurchasePage() {
   const [edits, setEdits] = useState<Record<string, { actualQty?: string; price?: string }>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => { loadAll() }, [targetDate, loadAll])
 
   const activePOs = useMemo(() =>
     purchaseOrders
@@ -120,18 +120,12 @@ export default function PurchasePage() {
     .reduce((sum, po) => sum + po.lines.filter(l => !l.received).length, 0)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center gap-3">
-          <BackButton />
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">採購管理</h1>
-            <p className="text-sm text-gray-400">
-              {totalPending > 0 ? `${totalPending} 個品項待採購` : '全部品項已到齊'}
-            </p>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <PageHeader title="採購管理" showBack>
+        <p className="text-sm text-gray-500 pt-2 text-center md:text-left">
+          {totalPending > 0 ? `${totalPending} 個品項待採購` : '全部品項已到齊'}
+        </p>
+      </PageHeader>
 
       <div className="p-6 max-w-6xl mx-auto space-y-4">
         {activePOs.length === 0 ? (

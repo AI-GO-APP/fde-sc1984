@@ -1,105 +1,70 @@
 /**
- * 06 - Stock Report E2E 測試
- * 涵蓋：載入、搜尋、表格、計算、列印、邊界案例
+ * 06 - 日期切換整合測試
+ * 驗證：全域日期切換在各頁面間的一致性與快取行為
  */
 import { test, expect } from '../fixtures/test-fixtures'
+import { getCurrentDateText } from '../helpers/date-navigator'
 
-test.describe('Stock Report', () => {
-  test.beforeEach(async ({ authedPage }) => {
-    await authedPage.goto('/stock')
+test.describe('日期切換整合測試', () => {
+
+  test('6.1 Dashboard 切換日期後進入子頁面，日期保持一致', async ({ authedPage }) => {
+    await authedPage.goto('/')
     await authedPage.waitForLoadState('domcontentloaded')
+
+    // 往前翻一天
+    await authedPage.locator('button[title="前一天"]').click()
+    await authedPage.waitForTimeout(1000)
+    const dashboardDate = await getCurrentDateText(authedPage)
+
+    // 點進確認訂單
+    await authedPage.getByText('確認訂單').first().click()
+    await authedPage.waitForLoadState('domcontentloaded')
+    await authedPage.waitForTimeout(500)
+
+    const ordersDate = await getCurrentDateText(authedPage)
+    expect(ordersDate).toBe(dashboardDate)
   })
 
-  // --- 正常流 ---
+  test('6.2 子頁面切換日期後返回 Dashboard，日期保持一致', async ({ authedPage }) => {
+    await authedPage.goto('/orders')
+    await authedPage.waitForLoadState('domcontentloaded')
 
-  test('6.1 載入後顯示 Stock Report 標題', async ({ authedPage }) => {
-    await expect(authedPage.getByText('庫存報表')).toBeVisible()
-  })
+    // 往前翻兩天
+    await authedPage.locator('button[title="前一天"]').click()
+    await authedPage.waitForTimeout(500)
+    await authedPage.locator('button[title="前一天"]').click()
+    await authedPage.waitForTimeout(1000)
+    const ordersDate = await getCurrentDateText(authedPage)
 
-  test('6.2 統計卡片呈現', async ({ authedPage }) => {
-    // 確認頁面載入完成且不崩潰
-    const body = await authedPage.textContent('body')
-    expect(body).toContain('庫存報表')
-    // 若有資料，確認有統計面板
-    const hasItems = body?.includes('品項數')
-    if (hasItems) {
-      expect(body).toContain('品項數')
-    }
-  })
-
-  test('6.3 表格呈現產品明細', async ({ authedPage }) => {
-    const table = authedPage.locator('table')
-    if (await table.isVisible()) {
-      const body = await authedPage.textContent('body')
-      expect(body).toContain('品名')
-    }
-  })
-
-  // --- 搜尋 ---
-
-  test('6.4 搜尋欄篩選產品名稱', async ({ authedPage }) => {
-    const searchInput = authedPage.getByPlaceholder('搜尋商品...')
-    if (await searchInput.isVisible()) {
-      await searchInput.fill('__nonexistent__')
-      await authedPage.waitForTimeout(300)
-      const rows = authedPage.locator('tbody tr')
-      expect(await rows.count()).toBe(0)
-    }
-  })
-
-  test('6.5 搜尋清空後恢復全部', async ({ authedPage }) => {
-    const searchInput = authedPage.getByPlaceholder('搜尋商品...')
-    if (await searchInput.isVisible()) {
-      await searchInput.fill('test')
-      await authedPage.waitForTimeout(200)
-      await searchInput.fill('')
-      await authedPage.waitForTimeout(200)
-      const rows = authedPage.locator('tbody tr')
-      expect(await rows.count()).toBeGreaterThan(0)
-    }
-  })
-
-  // --- 計算 ---
-
-  test('6.6 Footer 合計列顯示 Total', async ({ authedPage }) => {
-    const footer = authedPage.locator('tfoot')
-    if (await footer.isVisible()) {
-      await expect(footer.getByText('合計')).toBeVisible()
-    }
-  })
-
-  // --- Print ---
-
-  test('6.7 Print Stock Report 按鈕存在', async ({ authedPage }) => {
-    const printBtn = authedPage.getByRole('button', { name: '列印庫存報表' })
-    if (await printBtn.isVisible()) {
-      await expect(printBtn).toBeEnabled()
-    }
-  })
-
-  // --- 邊界案例 ---
-
-  test('6.8 庫存頁為純顯示（無編輯元件）', async ({ authedPage }) => {
-    // 不應有 input 元件（庫存為純顯示）
-    const inputs = authedPage.locator('table input')
-    expect(await inputs.count()).toBe(0)
-  })
-
-  test('6.9 頁面不崩潰 (Items 計數)', async ({ authedPage }) => {
-    // 等待庫存報表文字出現
-    await authedPage.waitForSelector('text=庫存報表', { timeout: 45_000 }).catch(() => {})
-    const body = await authedPage.textContent('body')
-    expect(body).toBeTruthy()
-  })
-
-  test('6.10 返回按鈕不含重複文字箭頭', async ({ authedPage }) => {
+    // 返回 Dashboard
     const backBtn = authedPage.locator('header button').first()
-    const btnText = await backBtn.textContent()
-    expect(btnText).not.toContain('←')
+    await backBtn.click()
+    await authedPage.waitForLoadState('domcontentloaded')
+    await authedPage.waitForTimeout(500)
+
+    const dashboardDate = await getCurrentDateText(authedPage)
+    expect(dashboardDate).toBe(ordersDate)
   })
 
-  test('6.11 返回 Dashboard', async ({ authedPage }) => {
-    await authedPage.locator('header button').first().click()
-    await expect(authedPage).toHaveURL('/')
+  test('6.3 快取機制：翻到過的日期再翻回來應瞬間呈現', async ({ authedPage }) => {
+    await authedPage.goto('/')
+    await authedPage.waitForLoadState('domcontentloaded')
+
+    const todayDate = await getCurrentDateText(authedPage)
+
+    // 翻到昨天
+    await authedPage.locator('button[title="前一天"]').click()
+    await authedPage.waitForTimeout(1500)
+
+    // 翻回今天 — 應從快取秒恢復
+    const start = Date.now()
+    await authedPage.locator('button[title="後一天"]').click()
+    await authedPage.waitForTimeout(300)
+    const afterDate = await getCurrentDateText(authedPage)
+    const elapsed = Date.now() - start
+
+    expect(afterDate).toBe(todayDate)
+    // 快取恢復應在 2 秒內完成（包含渲染時間）
+    expect(elapsed).toBeLessThan(2000)
   })
 })

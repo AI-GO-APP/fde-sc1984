@@ -1,113 +1,70 @@
 /**
- * 03 - Purchase List（今日訂單接收）E2E 測試
- * 涵蓋：客戶/品項 Tab 切換、展開、列印勾選、供應商全選、邊界案例
+ * 03 - 採購管理 (PurchasePage) E2E 測試
+ * 適配：單日訂單制、PageHeader 日期選擇器
+ * 涵蓋：頁面載入、供應商分群、到貨操作、自動翻頁找資料
  */
 import { test, expect } from '../fixtures/test-fixtures'
+import { navigateToDateWithData } from '../helpers/date-navigator'
 
-test.describe('Purchase List (今日訂單接收)', () => {
+test.describe('採購管理 (PurchasePage)', () => {
   test.beforeEach(async ({ authedPage }) => {
-    await authedPage.goto('/purchase-list')
+    await authedPage.goto('/purchase')
     await authedPage.waitForLoadState('domcontentloaded')
   })
 
-  // --- 正常流 ---
-
-  test('3.1 載入後顯示客戶列表視角 (預設)', async ({ authedPage }) => {
-    await expect(authedPage.getByText('Loading list')).not.toBeVisible()
-    await expect(authedPage.getByText('今日訂單接收')).toBeVisible()
+  test('3.1 載入後顯示採購管理標題', async ({ authedPage }) => {
+    await expect(authedPage.getByText('採購管理')).toBeVisible()
   })
 
-  test('3.2 標題顯示訂單、客戶、品項數', async ({ authedPage }) => {
-    const subtitle = await authedPage.locator('header p.text-sm').textContent()
-    expect(subtitle).toMatch(/\d+ 筆訂單/)
+  test('3.2 PageHeader 日期切換可用', async ({ authedPage }) => {
+    await expect(authedPage.locator('button[title="前一天"]')).toBeVisible()
   })
 
-  test('3.3 展開客戶顯示訂單明細', async ({ authedPage }) => {
-    const expandBtn = authedPage.locator('button:has-text("▸")').first()
-    if (await expandBtn.isVisible()) {
-      await expandBtn.click()
-      // 應顯示表格 (品名/數量等)
-      await expect(authedPage.getByText('品名')).toBeVisible()
+  test('3.3 狀態文字顯示待採購計數或全部到齊', async ({ authedPage }) => {
+    const body = await authedPage.textContent('body') || ''
+    const hasStatus = body.includes('待採購') || body.includes('全部品項已到齊')
+    expect(hasStatus).toBe(true)
+  })
+
+  test('3.4 自動翻頁找到採購單後展開供應商', async ({ authedPage }) => {
+    const hasData = await navigateToDateWithData(authedPage, {
+      hasDataSelector: '.bg-white.rounded-xl',
+      maxDaysBack: 7,
+    })
+
+    if (hasData) {
+      // 點擊展開第一個供應商
+      const supplierBtn = authedPage.locator('.bg-white.rounded-xl button').first()
+      if (await supplierBtn.isVisible()) {
+        await supplierBtn.click()
+        await authedPage.waitForTimeout(500)
+        const body = await authedPage.textContent('body')
+        expect(body).toBeTruthy()
+      }
     }
   })
 
-  // --- Tab 切換 ---
+  test('3.5 供應商名稱應為可讀文字（非 UUID）', async ({ authedPage }) => {
+    const hasData = await navigateToDateWithData(authedPage, {
+      hasDataSelector: '.bg-white.rounded-xl',
+      maxDaysBack: 5,
+    })
 
-  test('3.4 切換「按品項彙總」Tab', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(500)
-    // 品項表格出現
-    const body = await authedPage.textContent('body')
-    expect(body).toContain('品名規格')
-  })
-
-  test('3.5 品項加總表 footer 合計', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(500)
-    const body = await authedPage.textContent('body')
-    expect(body).toContain('合計')
-  })
-
-  // --- 供應商列印 ---
-
-  test('3.6 供應商勾選列印區', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(500)
-    const body = await authedPage.textContent('body')
-    expect(body).toBeTruthy()
-  })
-
-  test('3.7 全選/取消全選供應商', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(500)
-    const selectAllLink = authedPage.locator('button', { hasText: '全選' }).first()
-    if (await selectAllLink.isVisible()) {
-      await selectAllLink.click()
-      await expect(authedPage.locator('button', { hasText: '取消全選' })).toBeVisible()
+    if (hasData) {
+      const supplierName = authedPage.locator('.font-bold.text-gray-900').first()
+      if (await supplierName.isVisible()) {
+        const text = await supplierName.textContent()
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+        expect(UUID_RE.test(text?.trim() || '')).toBe(false)
+      }
     }
   })
 
-  test('3.8 列印按鈕：未勾選則 disabled', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(500)
-    const printBtn = authedPage.locator('button:has-text("列印勾選")')
-    if (await printBtn.isVisible()) {
-      await expect(printBtn).toBeDisabled()
+  test('3.6 返回 Dashboard', async ({ authedPage }) => {
+    const backBtn = authedPage.locator('header button').first()
+    if (await backBtn.isVisible()) {
+      await backBtn.click()
+      await expect(authedPage).toHaveURL('/')
     }
-  })
-
-  // --- 導航 ---
-
-  test('3.9 前往採購定價按鈕', async ({ authedPage }) => {
-    const navBtn = authedPage.locator('button:has-text("前往採購定價"), button:has-text("產生採購清單")')
-    if (await navBtn.isVisible()) {
-      await navBtn.click()
-      await expect(authedPage).toHaveURL(/\/procurement/)
-    }
-  })
-
-  // --- 邊界案例 ---
-
-  test('3.10 按客戶 Tab 切回', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(300)
-    await authedPage.locator('button', { hasText: '按客戶' }).click()
-    await authedPage.waitForTimeout(300)
-    const body = await authedPage.textContent('body')
-    expect(body).toBeTruthy()
-  })
-
-  test('3.11 列印採購加總表按鈕', async ({ authedPage }) => {
-    await authedPage.locator('button', { hasText: '按品項彙總' }).click()
-    await authedPage.waitForTimeout(500)
-    const printListBtn = authedPage.locator('button:has-text("列印採購加總表")')
-    if (await printListBtn.isVisible()) {
-      await expect(printListBtn).toBeEnabled()
-    }
-  })
-
-  test('3.12 返回 Dashboard', async ({ authedPage }) => {
-    await authedPage.locator('button:has-text("←")').click()
-    await expect(authedPage).toHaveURL('/')
   })
 })

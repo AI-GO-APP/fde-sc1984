@@ -2,7 +2,7 @@
  * Step 1: 確認訂單 — 逐筆確認 draft → sale
  */
 import { useState, useMemo, useEffect } from 'react'
-import BackButton from '../components/BackButton'
+import PageHeader from '../components/PageHeader'
 import { useAdminStore } from '../store/useAdminStore'
 import { useUIStore } from '../store/useUIStore'
 import { updateSaleOrderState } from '../api/sales'
@@ -31,7 +31,7 @@ const stateConfig: Record<string, { label: string; color: string }> = {
 const PAGE_SIZE = 10
 
 export default function OrdersPage() {
-  const { saleOrders, loadSales } = useAdminStore()
+  const { targetDate, saleOrders, loadSales } = useAdminStore()
   const { withLoading } = useUIStore()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
@@ -39,7 +39,7 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  useEffect(() => { loadSales() }, [])
+  useEffect(() => { loadSales(targetDate) }, [targetDate, loadSales])
 
   const filtered = useMemo(() => {
     let list = saleOrders
@@ -82,22 +82,14 @@ export default function OrdersPage() {
   const confirmOrder = saleOrders.find(o => o.id === confirmId)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex justify-between items-center mb-3">
-          <div className="flex items-center gap-3">
-            <BackButton />
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">確認訂單</h1>
-              <p className="text-sm text-gray-400">{filtered.length} 筆訂單</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex gap-3">
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <PageHeader title="確認訂單" showBack>
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <SearchInput value={search} onChange={v => { setSearch(v); setPage(1) }} placeholder="搜尋客戶、訂單..." className="flex-1 max-w-xs" />
           <StatusDropdown value={filter} onChange={v => { setFilter(v); setPage(1) }} options={stateOptions} />
+          <span className="text-sm text-gray-500 self-center hidden sm:block ml-2">{filtered.length} 筆訂單</span>
         </div>
-      </header>
+      </PageHeader>
 
       <div className="p-6 max-w-5xl mx-auto space-y-3">
         {paged.length === 0 ? (

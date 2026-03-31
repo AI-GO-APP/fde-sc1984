@@ -69,19 +69,21 @@ const resolveCustomerName = (raw: any, customerMap: Record<string, string>): str
   return '未知客戶'
 }
 
-// ─── API ───
+import { getOrderDateBounds } from '../utils/dateHelpers'
 
-export const getSaleOrders = async (): Promise<SaleOrder[]> => {
-  // 算出 7 天前的 UTC 日期
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7)
-  const dateStr = sevenDaysAgo.toISOString().split('T')[0]
+export const getSaleOrders = async (targetDate: string): Promise<SaleOrder[]> => {
+  // 取出精準的 Odoo UTC [開始, 結束) 界線
+  const { start, end } = getOrderDateBounds(targetDate)
 
   // 第一階段平行拉取母單、客人、單位、活性商品
   const [orders, customers, uomMap, products] = await Promise.all([
     db.query('sale_orders', { 
       select_columns: ['id', 'name', 'state', 'date_order', 'customer_id', 'amount_total', 'note'],
-      filters: [{ column: 'date_order', op: 'ge', value: `${dateStr} 00:00:00` }] 
+      filters: [
+        { column: 'date_order', op: 'ge', value: start },
+        { column: 'date_order', op: 'lt', value: end },
+        { column: 'state', op: 'in', value: ['draft', 'sent', 'sale'] } // 過濾掉廢單與歷史 done 單
+      ]
     }),
     db.query('customers', { select_columns: ['id', 'name'] }).catch(() => []),
     getUomMap(),
@@ -120,7 +122,7 @@ export const getSaleOrders = async (): Promise<SaleOrder[]> => {
       id: String(o.id),
       name: o.name || String(o.id),
       state: o.state || 'draft',
-      date: o.date_order ? String(o.date_order).split(' ')[0] : '',
+      date: targetDate, // 強制歸屬為目標日
       customerName: resolveCustomerName(o.customer_id, customerMap),
       totalAmount: o.amount_total || 0,
       note: noteData.text || '',
