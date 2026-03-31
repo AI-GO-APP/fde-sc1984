@@ -127,7 +127,7 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
           actualQty,
           unitPrice,
           subtotal: Math.round(actualQty * unitPrice * 100) / 100,
-          uom: productUom[ptId] || '',
+          uom: productUom[ptId] || '單位',
           received: customData.received === true,
          }
       }),

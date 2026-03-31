@@ -19,12 +19,10 @@ export interface Product {
 const resolveUom = (raw: any, uomMap: Record<string, string>): string => {
   if (Array.isArray(raw) && raw.length >= 2) return String(raw[1])
   if (typeof raw === 'string') {
-    // 如果不像 UUID，直接用（可能已經是名稱）
     if (raw.length < 30) return raw
-    // 是 UUID → 查表
-    return uomMap[raw] || ''
+    return uomMap[raw] || '單位'
   }
-  return ''
+  return '單位'
 }
 
 /** 取得 UoM 查找表：uuid → 名稱 */
@@ -32,7 +30,7 @@ export const getUomMap = async (): Promise<Record<string, string>> => {
   try {
     const uoms = await db.query('uom_uom')
     const map: Record<string, string> = {}
-    uoms.forEach((u: any) => { map[String(u.id)] = u.name || '' })
+    uoms.forEach((u: any) => { map[String(u.id)] = u.name || '單位' })
     return map
   } catch {
     return {}
