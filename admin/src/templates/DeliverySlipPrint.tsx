@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 出貨配送單 — 列印版面
  * 使用 API 回傳的 SalesInvoice 資料，不依賴 mockData

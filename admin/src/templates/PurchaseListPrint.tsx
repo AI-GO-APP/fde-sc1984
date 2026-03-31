@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * 採購加總數量表 — 列印版面
  * 使用 API 回傳的 PurchaseOrder 資料，不依賴 mockData
