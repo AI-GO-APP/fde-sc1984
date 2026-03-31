@@ -10,6 +10,7 @@
 import { create } from 'zustand'
 import { type Product, type Category } from '../data/mockData'
 import { useAuthStore } from './useAuthStore'
+import { useUIStore } from './useUIStore'
 import {
   fetchProductTemplates,
   fetchProductCategories,
@@ -127,11 +128,15 @@ export const useStore = create<AppState>((set, get) => ({
 
     // 無快取或強制刷新：顯示 loading
     set({ productsLoading: true })
+    const { showLoading, hideLoading, toast } = useUIStore.getState()
+    showLoading('載入菜單中...')
     try {
       await refreshFromApi(set)
     } catch (err) {
+      toast('error', '載入菜單失敗，請稍後再試')
       console.error('載入產品失敗:', err)
     } finally {
+      hideLoading()
       set({ productsLoading: false })
     }
   },
@@ -167,6 +172,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadOrders: async (offset = 0) => {
     set({ ordersLoading: true })
+    const { showLoading, hideLoading, toast } = useUIStore.getState()
+    if (offset === 0) showLoading('載入歷史訂單中...')
     try {
       const orders = await querySaleOrders(
         [],
@@ -191,8 +198,10 @@ export const useStore = create<AppState>((set, get) => ({
         apiOrders: offset > 0 ? [...state.apiOrders, ...apiOrders] : apiOrders 
       }))
     } catch (err) {
+      if (offset === 0) toast('error', '載入歷史訂單失敗，請稍後重試')
       console.error('載入訂單失敗:', err)
     } finally {
+      if (offset === 0) hideLoading()
       set({ ordersLoading: false })
     }
   },

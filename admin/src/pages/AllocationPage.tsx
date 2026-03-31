@@ -6,6 +6,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
+import { useUIStore } from '../store/useUIStore'
 import {
   updateSaleOrderLineDelivery,
   updateSaleOrderAllocation,
@@ -15,14 +16,13 @@ import { shortId } from '../utils/displayHelpers'
 
 export default function AllocationPage() {
   const { saleOrders, purchaseOrders, drivers, loadAll } = useAdminStore()
-  const [loading, setLoading] = useState(true)
+  const { withLoading } = useUIStore()
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
   const [completingId, setCompletingId] = useState<string | null>(null)
   // 本地編輯：{ lineId: qty, orderId_driver: driverName }
   const [edits, setEdits] = useState<Record<string, string>>({})
 
-  useEffect(() => { loadAll().then(() => setLoading(false)) }, [])
+  useEffect(() => { loadAll() }, [])
 
   // 已確認但尚未完成配送的訂單
   const allocatableOrders = useMemo(() =>
@@ -85,8 +85,7 @@ export default function AllocationPage() {
   const handleSave = async (orderId: string) => {
     const order = allocatableOrders.find(o => o.id === orderId)
     if (!order) return
-    setSaving(true)
-    try {
+    await withLoading(async () => {
       // 儲存各品項實際出貨量
       for (const line of order.lines) {
         const editKey = `${line.id}_qty`
@@ -107,17 +106,14 @@ export default function AllocationPage() {
         return next
       })
       await loadAll(true)
-    } finally {
-      setSaving(false)
-    }
+    }, '儲存分配中...', '分配已儲存')
   }
 
   const handleComplete = async () => {
     if (!completingId) return
     const order = allocatableOrders.find(o => o.id === completingId)
-    if (!order) return
-    setSaving(true)
-    try {
+    if (!order) { setCompletingId(null); return }
+    await withLoading(async () => {
       // 儲存各品項實際出貨量
       for (const line of order.lines) {
         const editKey = `${line.id}_qty`
@@ -140,15 +136,11 @@ export default function AllocationPage() {
         return next
       })
       await loadAll(true)
-    } finally {
-      setSaving(false)
-      setCompletingId(null)
-    }
+    }, '完成分配中...', '訂單已標記為分配完成')
+    setCompletingId(null)
   }
 
   const unallocatedCount = allocatableOrders.filter(o => !o.allocated).length
-
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">載入中...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -271,7 +263,6 @@ export default function AllocationPage() {
                   {!order.allocated && (
                     <div className="flex gap-2 justify-end pt-2">
                       <button onClick={() => handleSave(order.id)}
-                        disabled={saving}
                         className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50">
                         儲存分配
                       </button>

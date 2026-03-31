@@ -7,17 +7,17 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore'
 import { useAuthStore } from '../store/useAuthStore'
+import { useUIStore } from '../store/useUIStore'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function CartPage() {
   const navigate = useNavigate()
   const { cart, updateCartQty, updateCartNote, removeFromCart, submitOrderAsync, liveProducts } = useStore()
   const { logout } = useAuthStore()
+  const { showLoading, hideLoading, toast } = useUIStore()
   const [orderNote, setOrderNote] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitStep, setSubmitStep] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   // 用 LIVE 產品資料（若有），否則 fallback 至 productId
@@ -30,20 +30,19 @@ export default function CartPage() {
   }))
 
   const handleSubmit = async () => {
-    setSubmitting(true)
+    setShowConfirm(false)
+    showLoading('建立訂單中...')
     setError(null)
-    setSubmitStep('建立訂單中...')
     try {
-      await submitOrderAsync(orderNote, (step) => setSubmitStep(step))
-      setSubmitStep('完成！')
+      await submitOrderAsync(orderNote, (step) => showLoading(step))
+      hideLoading()
+      toast('success', '訂單已送出！')
       setSubmitted(true)
-      setShowConfirm(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '下單失敗')
-      setShowConfirm(false)
-    } finally {
-      setSubmitting(false)
-      setSubmitStep('')
+      hideLoading()
+      const msg = err instanceof Error ? err.message : '下單失敗'
+      toast('error', msg)
+      setError(msg)
     }
   }
 
@@ -133,19 +132,18 @@ export default function CartPage() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-        <button onClick={() => setShowConfirm(true)} disabled={submitting}
-          className="w-full py-3.5 bg-primary text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors shadow-lg shadow-green-200 disabled:opacity-50 disabled:cursor-not-allowed">
-          {submitting ? '送出中...' : `送出訂單（${cart.length} 項）`}
+        <button onClick={() => setShowConfirm(true)}
+          className="w-full py-3.5 bg-primary text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-colors shadow-lg shadow-green-200">
+          送出訂單（{cart.length} 項）
         </button>
       </div>
 
       <ConfirmDialog
         open={showConfirm}
-        title={submitting ? '訂單送出中' : '確認送出訂單？'}
-        message={submitting ? submitStep : `將送出 ${cart.length} 項品項。送出後訂單將寫入系統。`}
+        title="確認送出訂單？"
+        message={`將送出 ${cart.length} 項品項。送出後訂單將寫入系統。`}
         confirmText="確認送出"
         variant="info"
-        loading={submitting}
         onConfirm={handleSubmit}
         onCancel={() => setShowConfirm(false)}
       />

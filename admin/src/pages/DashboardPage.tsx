@@ -1,16 +1,12 @@
 /**
  * Dashboard — 四階段作業流程入口
  */
-import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminStore } from '../store/useAdminStore'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const { saleOrders, purchaseOrders, loadAll } = useAdminStore()
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => { loadAll().then(() => setLoading(false)) }, [])
+  const { saleOrders, purchaseOrders } = useAdminStore()
 
   const step1Count = saleOrders.filter(o => o.state === 'draft').length
   const step2Count = purchaseOrders
@@ -25,8 +21,6 @@ export default function DashboardPage() {
     { step: '3', label: '出庫分配', desc: '分配出貨量', href: '/allocation', count: step3Count, color: 'bg-purple-500' },
     { step: '4', label: '出貨配送', desc: '配送給客戶', href: '/delivery', count: step4Count, color: 'bg-green-600' },
   ]
-
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">載入中...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">

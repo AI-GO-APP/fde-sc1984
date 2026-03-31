@@ -2,7 +2,10 @@ import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AuthCallbackPage from './pages/AuthCallbackPage'
 import AuthGuard from './components/AuthGuard'
+import LoadingCover from './components/LoadingCover'
+import ToastContainer from './components/ToastContainer'
 import { useAdminStore } from './store/useAdminStore'
+import { useUIStore } from './store/useUIStore'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const OrdersPage = lazy(() => import('./pages/OrdersPage'))
@@ -16,11 +19,20 @@ function LoadingFallback() {
 
 export default function App() {
   useEffect(() => {
+    const ui = useUIStore.getState()
+    ui.showLoading('載入資料中...')
     useAdminStore.getState().loadAll()
+      .then(() => ui.hideLoading())
+      .catch(() => {
+        ui.hideLoading()
+        ui.toast('error', '資料載入失敗，請重新整理')
+      })
   }, [])
 
   return (
     <BrowserRouter>
+      <LoadingCover />
+      <ToastContainer />
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
           <Route path="/auth/callback" element={<AuthCallbackPage />} />

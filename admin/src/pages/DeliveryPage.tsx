@@ -4,18 +4,19 @@
 import { useState, useMemo, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import { useAdminStore } from '../store/useAdminStore'
+import { useUIStore } from '../store/useUIStore'
 import { updateSaleOrderState } from '../api/sales'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { shortId } from '../utils/displayHelpers'
 
 export default function DeliveryPage() {
   const { saleOrders, loadAll } = useAdminStore()
-  const [loading, setLoading] = useState(true)
+  const { withLoading } = useUIStore()
   const [driverFilter, setDriverFilter] = useState('all')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  useEffect(() => { loadAll().then(() => setLoading(false)) }, [])
+  useEffect(() => { loadAll() }, [])
 
   // 已確認 + 已分配的訂單（等待出貨 or 已送達）
   const deliverableOrders = useMemo(() => {
@@ -39,18 +40,15 @@ export default function DeliveryPage() {
 
   const handleConfirm = async () => {
     if (!confirmId) return
-    try {
+    await withLoading(async () => {
       await updateSaleOrderState(confirmId, 'done')
       await loadAll(true)
-    } finally {
-      setConfirmId(null)
-    }
+    }, '記錄送達中...', '訂單已完成')
+    setConfirmId(null)
   }
 
   const confirmOrder = saleOrders.find(o => o.id === confirmId)
   const pendingCount = deliverableOrders.filter(o => o.state === 'sale').length
-
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center">載入中...</div>
 
   return (
     <div className="min-h-screen bg-gray-50">
