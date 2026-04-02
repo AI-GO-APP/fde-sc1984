@@ -238,7 +238,7 @@ export async function autoAddToPurchaseOrder(
   let existingLines: any[] = []
   if (poIds.length > 0) {
     existingLines = await db.query('purchase_order_lines', {
-      select_columns: ['id', 'order_id', 'product_id', 'product_qty'],
+      select_columns: ['id', 'order_id', 'product_id', 'product_qty', 'name'],
       filters: [{ column: 'order_id', op: 'in', value: poIds }]
     })
   }
@@ -274,8 +274,9 @@ export async function autoAddToPurchaseOrder(
 
     // 逐品項處理
     for (const line of lines) {
+      // 用 name 做比對（product_id FK 指向 product_products，但本系統只用 product_templates，傳入會 FK violation）
       const existingLine = poLines.find(
-        (l: any) => resolveId(l.product_id) === line.productId,
+        (l: any) => l.name === line.name,
       )
 
       if (existingLine) {
@@ -283,10 +284,9 @@ export async function autoAddToPurchaseOrder(
         const newQty = Math.round(((existingLine.product_qty || 0) + line.quantity) * 100) / 100
         await db.update('purchase_order_lines', String(existingLine.id), { product_qty: newQty })
       } else {
-        // 新增 line
+        // 新增 line（不傳 product_id 避免 FK violation）
         await db.insert('purchase_order_lines', {
           order_id: targetPOId,
-          product_id: line.productId,
           product_qty: line.quantity,
           name: line.name,
           price_unit: 0,
