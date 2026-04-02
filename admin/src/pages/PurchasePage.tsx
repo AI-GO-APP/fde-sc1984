@@ -1,17 +1,14 @@
 /**
  * Step 2: 採購管理 — 按供應商分組、需求量vs實際採購量、逐品項到貨
  *
- * 自動儲存：實際採購量和單價在 blur 或停止輸入後自動存到 DB
- * 到貨狀態：qty_received > 0 即視為已到貨
+ * 編輯流程：輸入框的數值暫存於 React state，僅在點擊「已採購到」按鈕時
+ * 一次性寫入 qty_received + price_unit，避免 autoSave 造成跨品項誤觸。
  */
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import PageHeader from '../components/PageHeader'
 import { useAdminStore } from '../store/useAdminStore'
 import { useUIStore } from '../store/useUIStore'
-import {
-  updatePurchaseOrderLine,
-  markLineReceived,
-} from '../api/purchase'
+import { markLineReceived } from '../api/purchase'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { shortId } from '../utils/displayHelpers'
 
@@ -19,12 +16,11 @@ type ConfirmTarget = { lineId: string; lineName: string; poId: string; actualQty
 
 export default function PurchasePage() {
   const { targetDate, purchaseOrders, loadAll } = useAdminStore()
-  const { withLoading, toast } = useUIStore()
+  const { withLoading } = useUIStore()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null)
-  // 本地編輯：{ lineId: { actualQty, price } }
+  // 本地編輯暫存（不寫 DB，僅在「已採購到」時一次性提交）
   const [edits, setEdits] = useState<Record<string, { actualQty?: string; price?: string }>>({})
-  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => { loadAll() }, [targetDate, loadAll])
 
@@ -43,35 +39,10 @@ export default function PurchasePage() {
     })
   }
 
-  // 自動儲存（debounce 800ms）
-  const autoSave = useCallback((lineId: string, field: 'actualQty' | 'price', value: string, originalLine: { quantity: number; unitPrice: number }) => {
-    // 清除之前的 timer
-    if (saveTimers.current[`${lineId}_${field}`]) {
-      clearTimeout(saveTimers.current[`${lineId}_${field}`])
-    }
-    saveTimers.current[`${lineId}_${field}`] = setTimeout(async () => {
-      try {
-        if (field === 'price') {
-          const v = parseFloat(value)
-          if (!isNaN(v) && v !== originalLine.unitPrice) {
-            await updatePurchaseOrderLine(lineId, { price_unit: v })
-          }
-        } else {
-          const v = parseFloat(value)
-          if (!isNaN(v) && v >= 0) {
-            await updatePurchaseOrderLine(lineId, { qty_received: v })
-          }
-        }
-      } catch (err) {
-        toast('error', '自動儲存失敗，請重試')
-      }
-    }, 800)
-  }, [])
-
-  const updateEdit = useCallback((lineId: string, field: 'actualQty' | 'price', value: string, originalLine: { quantity: number; unitPrice: number }) => {
+  // 純前端暫存，不觸發任何 API 寫入
+  const updateEdit = useCallback((lineId: string, field: 'actualQty' | 'price', value: string) => {
     setEdits(prev => ({ ...prev, [lineId]: { ...prev[lineId], [field]: value } }))
-    autoSave(lineId, field, value, originalLine)
-  }, [autoSave])
+  }, [])
 
   // 標記到貨前的驗證：實際採購量必須 > 0
   const tryMarkReceived = (lineId: string, lineName: string, poId: string) => {
@@ -88,19 +59,11 @@ export default function PurchasePage() {
     setConfirmTarget({ lineId, lineName, poId, actualQty })
   }
 
-  // 標記到貨（不可逆）
+  // 標記到貨（不可逆）— 唯一的 DB 寫入點
   const handleMarkReceived = async () => {
     if (!confirmTarget) return
     const po = purchaseOrders.find(p => p.id === confirmTarget.poId)
     if (!po) { setConfirmTarget(null); return }
-
-    // 取消可能還在跑的 debounce 儲存，避免重複 query 覆蓋
-    if (saveTimers.current[`${confirmTarget.lineId}_actualQty`]) {
-      clearTimeout(saveTimers.current[`${confirmTarget.lineId}_actualQty`])
-    }
-    if (saveTimers.current[`${confirmTarget.lineId}_price`]) {
-      clearTimeout(saveTimers.current[`${confirmTarget.lineId}_price`])
-    }
 
     await withLoading(async () => {
       const edit = edits[confirmTarget.lineId]
@@ -115,7 +78,6 @@ export default function PurchasePage() {
         finalPrice
       )
       setEdits(prev => { const next = { ...prev }; delete next[confirmTarget.lineId]; return next })
-      // 僅重載 Purchase 相關資料，不必重載 Sales 以減少重複 query
       await useAdminStore.getState().loadPurchases(targetDate, true)
     }, '記錄到貨中...', '已標記為到貨')
     setConfirmTarget(null)
@@ -194,7 +156,7 @@ export default function PurchasePage() {
                                 <div className="flex items-center justify-end gap-1">
                                   <input type="number" step="0.01" min="0"
                                     value={edit?.actualQty ?? (line.actualQty || '')}
-                                    onChange={e => updateEdit(line.id, 'actualQty', e.target.value, line)}
+                                    onChange={e => updateEdit(line.id, 'actualQty', e.target.value)}
                                     placeholder="填入"
                                     className="w-28 text-right border border-gray-200 rounded px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
                                   <span className="text-xs text-gray-400">{line.uom}</span>
@@ -207,7 +169,7 @@ export default function PurchasePage() {
                               {isDraft && !line.received ? (
                                 <input type="number" step="0.01" min="0"
                                   value={edit?.price ?? String(line.unitPrice)}
-                                  onChange={e => updateEdit(line.id, 'price', e.target.value, line)}
+                                  onChange={e => updateEdit(line.id, 'price', e.target.value)}
                                   className="w-32 text-right border border-gray-200 rounded px-2 py-1 text-sm focus:border-blue-400 focus:outline-none" />
                               ) : `NT$${line.unitPrice}`}
                             </td>
