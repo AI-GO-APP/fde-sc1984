@@ -1,7 +1,7 @@
 """v5 CSS — 修復全部 14 項問題"""
 
 def get_app_css() -> str:
-    return r''':host {
+    return r''':host, :root {
   --color-primary: #16a34a;
   --color-primary-dark: #15803d;
   --color-primary-foreground: #fff;
@@ -362,20 +362,20 @@ export default function DataProvider({ children }: { children: ReactNode }) {
     try {
       // 避免 9 個 request 瞬間灌爆 proxy 導致 429，改為 3 批次
       const [so, cust, sol] = await Promise.all([
-        db.query('sale_orders', { limit: 500 }).catch(() => []),
-        db.query('customers', { limit: 500 }).catch(() => []),
-        db.query('sale_order_lines', { limit: 500 }).catch(() => [])
+        db.query('sale_orders').catch(() => []),
+        db.query('customers').catch(() => []),
+        db.query('sale_order_lines').catch(() => [])
       ]);
       const [emps, prods, pp] = await Promise.all([
-        db.query('hr_employees', { limit: 200 }).catch(() => []),
-        db.query('product_templates', { limit: 500 }).catch(() => []),
-        db.query('product_products', { limit: 500 }).catch(() => [])
+        db.query('hr_employees').catch(() => []),
+        db.query('product_templates').catch(() => []),
+        db.query('product_products').catch(() => [])
       ]);
       const [sq, sups, si, slocs] = await Promise.all([
-        db.query('stock_quants', { limit: 500 }).catch(() => []),
-        db.query('suppliers', { limit: 200 }).catch(() => []),
-        db.query('product_supplierinfo', { limit: 500 }).catch(() => []),
-        db.query('stock_locations', { limit: 100 }).catch(() => []),
+        db.query('stock_quants').catch(() => []),
+        db.query('suppliers').catch(() => []),
+        db.query('product_supplierinfo').catch(() => []),
+        db.query('stock_locations').catch(() => []),
       ]);
 
       setOrders(Array.isArray(so) ? so : []);

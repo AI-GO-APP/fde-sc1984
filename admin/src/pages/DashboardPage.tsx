@@ -45,6 +45,33 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
+
+        <div className="flex flex-wrap justify-end gap-2 mt-4">
+          <button
+            onClick={() => navigate('/supplier-mapping')}
+            className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          >
+            供應商對應
+          </button>
+          <button
+            onClick={() => navigate('/driver-mapping')}
+            className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          >
+            司機-客戶對應
+          </button>
+          <button
+            onClick={() => navigate('/price')}
+            className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          >
+            品項價格
+          </button>
+          <button
+            onClick={() => navigate('/settings')}
+            className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 transition-colors"
+          >
+            ⚙️ 系統設定
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -276,7 +276,7 @@ export default function SalesOrdersPage() {
   const [search,setSearch]=useState(''); const [filter,setFilter]=useState('all');
   const [expanded,setExpanded]=useState<string|null>(null);
   const [confirm,setConfirm]=useState<{id:string;action:string}|null>(null);
-  const load=()=>{setLoading(true);Promise.all([db.query('sale_orders',{limit:200}),db.query('customers',{limit:500}),db.query('sale_order_lines',{limit:500})])
+  const load=()=>{setLoading(true);Promise.all([db.query('sale_orders'),db.query('customers'),db.query('sale_order_lines')])
   .then(([o,c,l])=>{
     const ol=Array.isArray(o)?o:[]; ol.sort((a:any,b:any)=>new Date(b.date_order||b.created_at||0).getTime()-new Date(a.date_order||a.created_at||0).getTime());
     setOrders(ol); const cm:any={}; for(const x of (Array.isArray(c)?c:[])) cm[x.id]=x; setCusts(cm); setLines(Array.isArray(l)?l:[]);

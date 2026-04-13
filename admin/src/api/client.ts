@@ -118,6 +118,10 @@ export const db = {
   async insert<T = any>(table: string, data: Record<string, any>): Promise<T> {
     const res = await apiClient.post(`/open/proxy/${table}`, data);
     return res.data;
+  },
+
+  async delete(table: string, id: string | number): Promise<void> {
+    await apiClient.delete(`/open/proxy/${table}/${id}`)
   }
 };
 

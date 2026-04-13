@@ -13,6 +13,8 @@
 import { db } from './client'
 // 參照資料由 refCache 統一管理
 import { isUUID } from '../utils/displayHelpers'
+import { resolveId } from '../utils/odooHelpers'
+import { listSupplierMappings } from './supplierMapping'
 
 // ─── 型別 ───
 
@@ -57,26 +59,15 @@ const resolveSupplierName = (raw: any, supplierMap: Record<string, string>): str
   return '未定義供應商'
 }
 
-const resolveId = (raw: any): string => {
-  if (Array.isArray(raw)) return String(raw[0])
-  return String(raw || '')
-}
-
 // ─── API ───
 
 /** 載入 product_supplierinfo → 產品↔供應商對應表 */
 export const getSupplierMappings = async (): Promise<SupplierMapping[]> => {
-  try {
-    const rows = await db.query('product_supplierinfo', { select_columns: ['product_tmpl_id', 'supplier_id'] })
-    return rows
-      .filter((r: any) => r.product_tmpl_id && r.supplier_id)
-      .map((r: any) => ({
-        productTemplateId: resolveId(r.product_tmpl_id),
-        supplierId: resolveId(r.supplier_id),
-      }))
-  } catch {
-    return []
-  }
+  const records = await listSupplierMappings()
+  return records.map(r => ({
+    productTemplateId: r.productTemplateId,
+    supplierId: r.supplierId,
+  }))
 }
 
 /** 載入供應商清單 → id→name 查找表 */

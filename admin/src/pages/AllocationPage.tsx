@@ -1,7 +1,5 @@
 /**
  * Step 3: 出庫分配 — 以訂單為視角，分配實際出貨量、指派司機
- *
- * 規則：每個品項的分配總量不能超過實際採購量
  */
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import PageHeader from '../components/PageHeader'
@@ -81,22 +79,10 @@ export default function AllocationPage() {
     return total
   }, [allocatableOrders, edits, getLineKey])
 
-  // 檢查某訂單的分配是否超量
-  const checkAllocationValid = useCallback((orderId: string) => {
-    const order = allocatableOrders.find(o => o.id === orderId)
-    if (!order) return true
-    for (const line of order.lines) {
-      const lineKey = getLineKey(line)
-      const editKey = `${line.id}_qty`
-      const thisQty = edits[editKey] !== undefined
-        ? parseFloat(edits[editKey]) || 0
-        : line.actualDeliveryQty
-      const othersTotal = getAllocatedTotal(lineKey, orderId)
-      const available = getAvailableQty(line, purchasedQtyMap)
-      if (thisQty + othersTotal > available) return false
-    }
+  // 所有分配皆允許，不再限制是否超過採購量
+  const checkAllocationValid = useCallback((_orderId: string) => {
     return true
-  }, [allocatableOrders, edits, purchasedQtyMap, getAllocatedTotal, getLineKey, getAvailableQty])
+  }, [])
 
   const handleSave = async (orderId: string) => {
     const order = allocatableOrders.find(o => o.id === orderId)
@@ -267,8 +253,6 @@ export default function AllocationPage() {
           const isExpanded = expanded === order.id
           const driverKey = `${order.id}_driver`
           const currentDriver = edits[driverKey] ?? order.driver
-          const isValid = checkAllocationValid(order.id)
-
           return (
             <div key={order.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <button onClick={() => setExpanded(isExpanded ? null : order.id)}
@@ -329,7 +313,6 @@ export default function AllocationPage() {
                         const available = getAvailableQty(line as any, purchasedQtyMap)
                         const othersTotal = getAllocatedTotal(lineKey, order.id)
                         const remaining = Math.max(0, available - othersTotal)
-                        const overLimit = thisQty > remaining
 
                         return (
                           <tr key={line.id} className="border-t border-gray-50">
@@ -344,9 +327,7 @@ export default function AllocationPage() {
                                     value={edits[editKey] ?? (line.actualDeliveryQty || '')}
                                     onChange={e => setEdits(prev => ({ ...prev, [editKey]: e.target.value }))}
                                     placeholder="填入"
-                                    className={`w-20 text-right border rounded px-2 py-1 text-sm ${
-                                      overLimit ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                                    }`} />
+                                    className="w-20 text-right border rounded px-2 py-1 text-sm border-gray-200" />
                                   <span className="text-xs text-gray-400">{line.uom}</span>
                                 </div>
                               ) : (
@@ -372,9 +353,7 @@ export default function AllocationPage() {
                         儲存分配
                       </button>
                       <button onClick={() => setCompletingId(order.id)}
-                        disabled={!isValid}
-                        className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={!isValid ? '分配總量超過實際採購量' : ''}>
+                        className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
                         完成分配
                       </button>
                     </div>

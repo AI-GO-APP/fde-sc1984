@@ -1,10 +1,11 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { 
+  server: {
     port: 5174,
     proxy: {
       '/api/v1': {
@@ -12,5 +13,11 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  test: {
+    environment: 'node',
+    globals: true,
+    exclude: ['e2e/**', 'node_modules/**'],
+    include: ['src/**/__tests__/**/*.test.ts'],
   },
 })

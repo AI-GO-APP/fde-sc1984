@@ -1,24 +1,17 @@
 # ============================================================
-# 部署到 Staging
+# 部署到 AI GO Custom App (VFS 注入)
 #
-# Push 到 main 即自動部署 ordering + admin 兩個 Custom App
-# 也可在 GitHub Actions 頁面手動觸發
+# 合進 master 分支自動觸發，部署 ordering + admin 兩個 Custom App。
+# 也可在 GitHub Actions 頁面手動觸發。
 #
 # 必要 Secrets:
-#   STAGING_HOST                 - VM IP/hostname
-#   STAGING_SSH_KEY              - SSH 私鑰
-#   --- Admin ---
-#   VITE_API_KEY                 - Admin API Key (sk_live_xxx)
-#   VITE_APP_SLUG                - Admin App ID (UUID)
-#   --- Ordering ---
-#   ORDERING_API_KEY             - Ordering API Key (sk_live_xxx)
-#   ORDERING_APP_SLUG            - Ordering App Slug
-#   LINE_CHANNEL_ID              - LINE Login Channel ID
-#   LINE_CHANNEL_SECRET          - LINE Login Channel Secret
-#   ORDERING_LINE_CALLBACK_URL   - LINE 登入回調 URL (staging)
+#   AIGO_EMAIL        - AI GO 登入 email (admin@sc1984.com)
+#   AIGO_PASSWORD     - AI GO 登入密碼
+#   ADMIN_APP_ID      - Admin App UUID (從 AI GO Builder 後台取得)
+#   ORDERING_APP_ID   - Ordering App UUID (從 AI GO Builder 後台取得)
 # ============================================================
 
-name: 部署到 Staging
+name: 部署到 AI GO
 
 on:
   workflow_dispatch:
@@ -27,72 +20,53 @@ on:
     paths-ignore:
       - '*.md'
       - 'docs/**'
+      - '.agent/**'
 
 concurrency:
-  group: staging-deploy
+  group: aigo-deploy
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy-admin:
+    name: 部署 Admin App
     runs-on: ubuntu-latest
     steps:
-    - name: 部署到 Staging VM
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.STAGING_HOST }}
-        username: deploy
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        envs: VITE_API_KEY,VITE_APP_SLUG,ORDERING_API_KEY,ORDERING_APP_SLUG,LINE_CHANNEL_ID,LINE_CHANNEL_SECRET,ORDERING_LINE_CALLBACK_URL
-        script: |
-          set -e
-          REPO_NAME="fde-sc1984"
-          APP_DIR="/opt/apps/${REPO_NAME}"
+      - name: Checkout
+        uses: actions/checkout@v4
 
-          if [ ! -d "$APP_DIR" ]; then
-            git clone https://github.com/AI-GO-APP/${REPO_NAME}.git "$APP_DIR"
-          fi
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-          cd "$APP_DIR"
-          git fetch origin main
-          git reset --hard FETCH_HEAD
+      - name: 安裝依賴
+        run: pip install httpx
 
-          # ── Admin 前端 .env ──
-          printf 'VITE_API_BASE=/api/v1\nVITE_API_KEY=%s\nVITE_APP_SLUG=%s\nVITE_AIGO_URL=https://ai-go.app\n' "$VITE_API_KEY" "$VITE_APP_SLUG" > admin/.env
+      - name: 部署 Admin VFS
+        run: python scripts/deploy_admin.py
+        env:
+          AIGO_EMAIL: ${{ secrets.AIGO_EMAIL }}
+          AIGO_PASSWORD: ${{ secrets.AIGO_PASSWORD }}
+          ADMIN_APP_ID: ${{ secrets.ADMIN_APP_ID }}
 
-          # ── Ordering 前端 .env ──
-          printf 'VITE_API_BASE=/api/v1/open/proxy\nVITE_API_KEY=%s\nVITE_APP_SLUG=%s\nVITE_AUTH_BASE=/api/v1/custom-app-auth\nVITE_LINE_CHANNEL_ID=%s\nVITE_LINE_CALLBACK_URL=%s\n' "$ORDERING_API_KEY" "$ORDERING_APP_SLUG" "$LINE_CHANNEL_ID" "$ORDERING_LINE_CALLBACK_URL" > ordering/.env
+  deploy-ordering:
+    name: 部署 Ordering App
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-          # ── Ordering 後端 .env ──
-          printf 'LINE_CHANNEL_ID=%s\nLINE_CHANNEL_SECRET=%s\nAIGO_BASE=https://ai-go.app\nAPP_SLUG=%s\nPORT=3001\n' "$LINE_CHANNEL_ID" "$LINE_CHANNEL_SECRET" "$ORDERING_APP_SLUG" > ordering/backend/.env
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-          # ── docker-compose 根目錄 .env（供 build args 使用）──
-          printf 'VITE_API_KEY=%s\nVITE_APP_SLUG=%s\nORDERING_API_KEY=%s\nORDERING_APP_SLUG=%s\nLINE_CHANNEL_ID=%s\nORDERING_LINE_CALLBACK_URL=%s\n' "$VITE_API_KEY" "$VITE_APP_SLUG" "$ORDERING_API_KEY" "$ORDERING_APP_SLUG" "$LINE_CHANNEL_ID" "$ORDERING_LINE_CALLBACK_URL" > .env
+      - name: 安裝依賴
+        run: pip install httpx
 
-          echo "=== admin/.env ==="
-          cat admin/.env
-          echo "=== ordering/.env ==="
-          cat ordering/.env
-          echo "=== ordering/backend/.env ==="
-          cat ordering/backend/.env | sed 's/LINE_CHANNEL_SECRET=.*/LINE_CHANNEL_SECRET=***/'
-          echo "================"
-
-          # 停止舊部署的容器
-          OLD_DIR="/opt/apps/fde-apps"
-          if [ -d "$OLD_DIR" ] && [ -f "$OLD_DIR/docker-compose.staging.yml" ]; then
-            echo "偵測到舊部署，正在停止..."
-            cd "$OLD_DIR"
-            docker-compose -f docker-compose.staging.yml down || true
-            cd "$APP_DIR"
-          fi
-
-          echo "開始 build..."
-          docker-compose -f docker-compose.staging.yml up -d --build --force-recreate
-          echo "部署完成！"
-      env:
-        VITE_API_KEY: ${{ secrets.VITE_API_KEY }}
-        VITE_APP_SLUG: ${{ secrets.VITE_APP_SLUG }}
-        ORDERING_API_KEY: ${{ secrets.ORDERING_API_KEY }}
-        ORDERING_APP_SLUG: ${{ secrets.ORDERING_APP_SLUG }}
-        LINE_CHANNEL_ID: ${{ secrets.LINE_CHANNEL_ID }}
-        LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
-        ORDERING_LINE_CALLBACK_URL: ${{ secrets.ORDERING_LINE_CALLBACK_URL }}
+      - name: 部署 Ordering VFS
+        run: python scripts/deploy_ordering.py
+        env:
+          AIGO_EMAIL: ${{ secrets.AIGO_EMAIL }}
+          AIGO_PASSWORD: ${{ secrets.AIGO_PASSWORD }}
+          ORDERING_APP_ID: ${{ secrets.ORDERING_APP_ID }}

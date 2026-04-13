@@ -81,7 +81,16 @@ export default function ProcurementPage() {
     if (!item || item.purchasePrice <= 0 || item.state !== 'pending') return;
     setSaving(true);
     try {
+      const today = new Date().toISOString().slice(0, 10);
       await db.update('product_templates', pid, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
+      // 寫入價格稽核 log
+      await db.insertCustom('x_price_log', { product_id: pid, price: item.sellingPrice, effective_date: today });
+      // 同步當日配送的訂單明細售價
+      const matchingLines = orderLines.filter((l: any) =>
+        (l.product_template_id === pid || l.product_id === pid) &&
+        l.delivery_date && l.delivery_date.slice(0, 10) === today
+      );
+      await Promise.all(matchingLines.map((l: any) => db.update('sale_order_lines', l.id, { price_unit: item.sellingPrice })));
       if (item.actualQty > 0) {
         // 確保有 product_products 變體紀錄（FK 約束）
         let variantId = productProducts.find((v:any) => v.product_tmpl_id === pid)?.id;
@@ -105,9 +114,18 @@ export default function ProcurementPage() {
     const priceable = items.filter(i => i.purchasePrice > 0 && i.state === 'pending');
     if (priceable.length === 0) return;
     setSaving(true);
+    const today = new Date().toISOString().slice(0, 10);
     for (const item of priceable) {
       try {
         await db.update('product_templates', item.productId, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
+        // 寫入價格稽核 log
+        await db.insert('x_price_log', { product_id: item.productId, price: item.sellingPrice, effective_date: today });
+        // 同步當日配送的訂單明細售價
+        const matchingLines = orderLines.filter((l: any) =>
+          (l.product_template_id === item.productId || l.product_id === item.productId) &&
+          l.delivery_date && l.delivery_date.slice(0, 10) === today
+        );
+        await Promise.all(matchingLines.map((l: any) => db.update('sale_order_lines', l.id, { price_unit: item.sellingPrice })));
         if (item.actualQty > 0) {
           let variantId = productProducts.find((v:any) => v.product_tmpl_id === item.productId)?.id;
           if (!variantId) {
