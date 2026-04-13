@@ -95,7 +95,7 @@ interface AppState {
   apiOrders: ApiOrder[]
   ordersLoading: boolean
   loadOrders: (offset?: number) => Promise<void>
-  submitOrderAsync: (note: string, onProgress?: (step: string) => void) => Promise<string>
+  submitOrderAsync: (note: string, onProgress?: (step: string) => void, deliveryDate?: string) => Promise<string>
   submitError: string | null
 }
 
@@ -206,7 +206,7 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  submitOrderAsync: async (note, onProgress) => {
+  submitOrderAsync: async (note, onProgress, deliveryDate) => {
     const { cart, liveProducts, clearCart } = get()
     if (cart.length === 0) throw new Error('購物車是空的')
 
@@ -233,6 +233,7 @@ export const useStore = create<AppState>((set, get) => ({
           product_template_id: item.productId,
           name: product ? `${product.name}${item.note ? ` (${item.note})` : ''}` : item.productId,
           product_uom_qty: item.qty,
+          ...(deliveryDate ? { delivery_date: deliveryDate } : {}),
         })
         onProgress?.(`建立明細中 (${i + 1}/${cart.length})...`)
       }

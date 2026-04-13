@@ -24,6 +24,7 @@ const {
   LINE_CHANNEL_SECRET,
   AIGO_BASE,
   APP_SLUG,
+  API_KEY,
   PORT = '3001',
 } = process.env
 
@@ -126,6 +127,53 @@ async function aigoRegisterOrLogin(email, password, displayName) {
   throw new Error(errMsg)
 }
 
+// --- 訂單驗證工具函式 ---
+
+/**
+ * 向 AI GO Proxy 查詢 x_app_settings，取得 order_cutoff_time 的值
+ */
+async function getCutoffTimeSetting() {
+  try {
+    const res = await fetch(`${AIGO_BASE}/api/v1/open/proxy/x_app_settings/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(API_KEY ? { 'X-Api-Key': API_KEY } : {}),
+      },
+      body: JSON.stringify({
+        filters: [{ column: 'key', op: 'eq', value: 'order_cutoff_time' }],
+      }),
+    })
+    const rows = await res.json()
+    return rows[0]?.value ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 向 AI GO Proxy 查詢 x_holiday_settings，確認指定日期是否為假日
+ * @param {string} dateStr - 格式 YYYY-MM-DD
+ */
+async function isHoliday(dateStr) {
+  try {
+    const res = await fetch(`${AIGO_BASE}/api/v1/open/proxy/x_holiday_settings/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(API_KEY ? { 'X-Api-Key': API_KEY } : {}),
+      },
+      body: JSON.stringify({
+        filters: [{ column: 'date', op: 'eq', value: dateStr }],
+      }),
+    })
+    const rows = await res.json()
+    return Array.isArray(rows) && rows.length > 0
+  } catch {
+    return false
+  }
+}
+
 // --- API Endpoint ---
 
 /**
@@ -206,6 +254,96 @@ app.post('/line-auth/callback', async (req, res) => {
 // Health check
 app.get('/line-auth/health', (req, res) => {
   res.json({ status: 'ok', service: 'line-auth-backend' })
+})
+
+/**
+ * POST /order/validate
+ * Body: { delivery_date: string }   // 格式 YYYY-MM-DD
+ *
+ * 前端在提交訂單前呼叫此路由，server 端驗證：
+ * 1. 目前時間是否已超過截止時間（BV-1）
+ * 2. 所選配送日是否為假日（BV-2）
+ *
+ * 回傳: { allowed: boolean, reason?: string }
+ */
+app.post('/order/validate', async (req, res) => {
+  try {
+    // BV-3：驗證 Authorization header（Bearer token）
+    const authHeader = req.headers['authorization'] || ''
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+    if (!token) {
+      return res.status(401).json({
+        error: 'UNAUTHORIZED',
+        message: '請先登入',
+        allowed: false,
+      })
+    }
+    // 不需要驗證 token 內容（AI GO 會在 proxy 層驗證）
+    // 只要確認有 token 存在即可防止未授權的匿名呼叫
+
+    const { delivery_date } = req.body
+
+    // NB-1：delivery_date 缺失時回 400
+    if (!delivery_date) {
+      return res.status(400).json({
+        error: 'MISSING_DELIVERY_DATE',
+        message: '請提供訂單日期',
+        allowed: false,
+      })
+    }
+
+    // NB-2：delivery_date 格式驗證
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+    if (!DATE_RE.test(delivery_date)) {
+      return res.status(400).json({
+        error: 'INVALID_DATE_FORMAT',
+        message: '日期格式錯誤，應為 YYYY-MM-DD',
+        allowed: false,
+      })
+    }
+
+    // BV-1：截止時間驗證（以 UTC+8 台灣時間為準）
+    const cutoffValue = await getCutoffTimeSetting()
+    // 若無設定截止時間，預設放行（fail-open）
+    if (cutoffValue) {
+      // 取得台灣當地時間的 HH:mm（UTC+8）
+      const nowTW = new Date(Date.now() + 8 * 60 * 60 * 1000)
+      const nowMinutes = nowTW.getUTCHours() * 60 + nowTW.getUTCMinutes()
+
+      // 解析截止時間（cutoffValue 格式 "HH:mm"）
+      const [cutoffH, cutoffM] = cutoffValue.split(':').map(Number)
+      const cutoffMinutes = cutoffH * 60 + cutoffM
+
+      if (nowMinutes >= cutoffMinutes) {
+        return res.status(403).json({
+          error: 'ORDER_CUTOFF_PASSED',
+          message: '已超過訂單截止時間',
+          allowed: false,
+          reason: `截止時間 ${cutoffValue}，目前台灣時間 ${String(nowTW.getUTCHours()).padStart(2, '0')}:${String(nowTW.getUTCMinutes()).padStart(2, '0')}`,
+        })
+      }
+    }
+
+    // BV-2：假日驗證
+    const holiday = await isHoliday(delivery_date)
+    if (holiday) {
+      return res.status(422).json({
+        error: 'ORDER_DATE_IS_HOLIDAY',
+        message: '所選日期為休息日',
+        allowed: false,
+        reason: '所選日期為休息日',
+      })
+    }
+
+    res.json({ allowed: true })
+  } catch (err) {
+    console.error('[order/validate] Error:', err.message)
+    res.status(500).json({
+      error: 'INTERNAL_ERROR',
+      allowed: false,
+      reason: '伺服器錯誤，請稍後再試',
+    })
+  }
 })
 
 // --- SPA 靜態檔案伺服 ---

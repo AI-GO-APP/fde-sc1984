@@ -239,6 +239,7 @@ export async function createSaleOrderLine(data: {
   name: string
   product_uom_qty: number
   price_unit?: number
+  delivery_date?: string
 }): Promise<{ id: string; data: Record<string, unknown> }> {
   return fetchProxy('sale_order_lines', 'POST', data as Record<string, unknown>)
 }
