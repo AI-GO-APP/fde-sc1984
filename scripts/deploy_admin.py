@@ -14,11 +14,25 @@
 import json, sys, os, urllib.request, urllib.error
 
 sys.path.insert(0, os.path.dirname(__file__))
-from v5_css import get_app_css, get_confirm_dialog, get_print_provider, get_data_provider
-from v5_pages import dashboard, purchase_list, stock, delivery
-from v6_pages import procurement, sales_orders
+from v5_css import get_app_css, get_confirm_dialog, get_print_provider, get_data_provider, get_date_picker_with_counts
+from pages import dashboard, purchase_list, stock, delivery, procurement, sales_orders
+
+HOLIDAY_UUID = "96d01299-1d33-4ca7-b437-4bf5c78dfdcf"
 
 API_BASE = "https://ai-go.app/api/v1"
+
+
+def fetch_holiday_data(h: dict) -> list:
+    """從 x_holiday_settings 拉假日日期清單，回傳 ['YYYY-MM-DD', ...]"""
+    status, body = _req("GET", f"{API_BASE}/data/objects/{HOLIDAY_UUID}/records", h, timeout=30)
+    if status != 200:
+        print(f"  ⚠️ 拉取 x_holiday_settings 失敗：{status}，前端將無假日標示")
+        return []
+    records = body if isinstance(body, list) else []
+    dates = [r.get("data", {}).get("date") for r in records]
+    dates = sorted(d for d in dates if d)
+    print(f"  x_holiday_settings：{len(dates)} 個假日")
+    return dates
 
 
 def _req(method: str, url: str, headers: dict, data: dict = None, timeout: int = 30) -> tuple:
@@ -112,7 +126,7 @@ export async function queryCustom(slug:string): Promise<any[]> {
 '''
 
 
-def build_vfs() -> dict:
+def build_vfs(holiday_data: list = None) -> dict:
     vfs = {}
     vfs["package.json"] = json.dumps({
         "name": "xiong-quan-admin", "private": True, "version": "4.0.0", "type": "module",
@@ -202,6 +216,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
     vfs["src/db.ts"] = get_db_ts()
     vfs["src/components/ConfirmDialog.tsx"] = get_confirm_dialog()
     vfs["src/components/PrintProvider.tsx"] = get_print_provider()
+    vfs["src/components/DatePickerWithCounts.tsx"] = get_date_picker_with_counts()
     vfs["src/data/DataProvider.tsx"] = get_data_provider()
     vfs["src/pages/admin/DashboardPage.tsx"] = dashboard()
     vfs["src/pages/admin/PurchaseListPage.tsx"] = purchase_list()
@@ -211,6 +226,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
     vfs["src/pages/admin/DeliveryPage.tsx"] = delivery()
     vfs["src/pages/_manifest.json"] = json.dumps({"/": {"title": "管理後台", "order": 0}},
                                                    ensure_ascii=False, indent=2)
+    vfs["src/holiday_data.json"] = json.dumps(holiday_data or [], ensure_ascii=False)
     vfs["src/data.json"] = "{}"
     vfs["src/db.json"] = "{}"
     vfs["actions/manifest.json"] = json.dumps({}, indent=2)
@@ -260,8 +276,11 @@ def main():
     print("\n[2/4] 設定 DB References...")
     ensure_references(h, app_id)
 
+    print("\n[2.5/4] 拉取假日資料...")
+    holiday_data = fetch_holiday_data(h)
+
     print("\n[3/4] 組裝並上傳 VFS...")
-    vfs = build_vfs()
+    vfs = build_vfs(holiday_data)
     upload_vfs(h, app_id, vfs)
 
     print("\n[3.5/4] 編譯驗證...")
