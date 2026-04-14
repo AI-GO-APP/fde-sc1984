@@ -283,7 +283,7 @@ export default function ProcurementPage() {
 
 def sales_orders() -> str:
     """P0-2: 銷貨單管理 — 含配貨數量調整"""
-    return r'''import { useState, useEffect } from 'react';
+    return r'''import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as db from '../../db';
 import { useData } from '../../data/DataProvider';
