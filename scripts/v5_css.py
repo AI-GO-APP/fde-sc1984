@@ -310,6 +310,7 @@ BACK_BUTTON = '''<button onClick={()=>nav('/')} className="text-gray-400 hover:t
 def get_data_provider() -> str:
     """DataProvider — 全域資料快取 Context（staleTime 60s）"""
     return r'''import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import * as db from '../db';
 
@@ -354,7 +355,13 @@ export default function DataProvider({ children }: { children: ReactNode }) {
   const [suppliers, setSuppliers] = useState<Record<string, any>>({});
   const [supplierInfos, setSupplierInfos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const today = new Date().toISOString().slice(0, 10);
+  const [selectedDate, setSelectedDateState] = useState(() => searchParams.get('date') || today);
+  const setSelectedDate = useCallback((d: string) => {
+    setSelectedDateState(d);
+    setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('date', d); return p; }, { replace: true });
+  }, [setSearchParams]);
   const lastFetch = useRef(0);
   const fetching = useRef(false);
 
@@ -414,7 +421,7 @@ export default function DataProvider({ children }: { children: ReactNode }) {
     products, productProducts, stockQuants, stockLocations,
     suppliers, supplierInfos, loading, refresh,
     selectedDate, setSelectedDate,
-  }), [orders, customers, orderLines, employees, products, productProducts, stockQuants, stockLocations, suppliers, supplierInfos, loading, refresh, selectedDate]);
+  }), [orders, customers, orderLines, employees, products, productProducts, stockQuants, stockLocations, suppliers, supplierInfos, loading, refresh, selectedDate, setSelectedDate]);
 
   return (
     <DataContext.Provider value={value}>

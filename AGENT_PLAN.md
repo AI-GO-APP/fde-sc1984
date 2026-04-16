@@ -9,6 +9,7 @@
 - [ ] 2026-04-02 需求 8：發貨單（DeliveryPage + DeliverySlipPrint）顯示備註欄位
 - [ ] 2026-04-02 需求 7：實價更新後同步所有客戶訂單價格，並記錄軌跡（需客製化 x_price_audit_log 資料表）
 - [ ] 2026-04-02 需求 6：前台商品顯示「最近一次價格」（非實價），需決定價格來源欄位（見 ASK_HUMAN）
+- [ ] 2026-04-16 Admin custom app 補上 order audit log：建 x_order_audit_log custom table、在確認/取消訂單動作中呼叫 writeOrderAuditLog()（admin/src/api/orderAuditLog.ts 已有實作，待接入 scripts/pages.py）
 - [ ] 2026-04-02 需求 5：後台可編輯客戶訂單，需稽核軌跡（需客製化 x_order_audit_log 資料表）
 - [ ] 2026-04-02 需求 4：客戶前台訂單可選日期（明天以後、30 日內、排除休假日）；需客製化 x_holiday_settings 資料表
 - [ ] 2026-04-02 需求 3：後台設定截止時間，客戶端前後端雙驗證（需客製化 x_app_settings 資料表）
