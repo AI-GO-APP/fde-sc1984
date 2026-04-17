@@ -1674,8 +1674,15 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
         order_id: orderId,
         lines: lines.map(l => ({ id: l.id, qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0) })),
       });
+      const newLines = await db.query("sale_order_lines", {
+        filters: [{ column: "order_id", op: "eq", value: orderId }],
+      });
+      setItems(prev => prev.map(item =>
+        item.order.id === orderId
+          ? { ...item, lines: Array.isArray(newLines) ? newLines : item.lines }
+          : item
+      ));
       setEditOrderId(null);
-      await load();
     } catch (err: any) {
       alert("儲存失敗：" + (err.message || "未知錯誤"));
     } finally {
