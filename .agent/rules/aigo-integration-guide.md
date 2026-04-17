@@ -153,16 +153,19 @@ Many2one 欄位可能回傳 `[id, name]` 陣列或純 id，需防禦性解析。
 
 ## 4. Custom Table API（x_ 前綴表）
 
-Custom Table 使用 JSONB 儲存，不需要 References 白名單，但只有 Admin Bearer token 能存取（Custom App User token 無法）。
+Custom Table 使用 JSONB 儲存，不需要 References 白名單，但只有 Admin Bearer token 能存取（Custom App User token 無法，不能當 runtime proxy 使用）。
 
 ### 端點
 
 ```
-GET    /api/v1/data/objects/{uuid_or_slug}/records
-POST   /api/v1/data/objects/{uuid_or_slug}/records
-PATCH  /api/v1/data/records/{record_id}
-DELETE /api/v1/data/records/{record_id}
+GET    /api/v1/data/objects/{uuid_or_slug}/records          列表
+POST   /api/v1/data/objects/{uuid_or_slug}/records          新增
+PATCH  /api/v1/data/objects/{uuid_or_slug}/records/{rec_id} 更新（含 uuid 路徑）
+DELETE /api/v1/data/records/{record_id}                     刪除
 ```
+
+> ⚠️ **PATCH 路徑易踩坑**：更新必須帶 `/objects/{uuid_or_slug}/records/{rec_id}`，
+> 直接打 `/data/records/{rec_id}` 會 404。
 
 ### 回傳格式
 
@@ -175,25 +178,67 @@ DELETE /api/v1/data/records/{record_id}
 }
 ```
 
-### 新增記錄
+> 資料一律在 `data` 下，讀取用 `rec["data"]["field"]`，不是 `rec["field"]`。
+
+### 新增記錄（POST）
 
 ```http
 POST /api/v1/data/objects/{slug}/records
 Authorization: Bearer {admin_token}
 Content-Type: application/json
 
-{ "data": { "key": "value", "amount": 100 } }
+{ "data": { "key": "order_cutoff_time", "value": "03:00" } }
 ```
 
-> ⚠️ Custom Table 新增 **需要** `{"data": {...}}` 包裝（與 Odoo Proxy 新增相反）。
+回傳 201 + 完整 record。
+
+### 更新記錄（PATCH）
+
+```http
+PATCH /api/v1/data/objects/{uuid_or_slug}/records/{record_id}
+Authorization: Bearer {admin_token}
+Content-Type: application/json
+
+{ "data": { "value": "22:00", "updated_at": "2026-04-17T06:00:00Z" } }
+```
+
+> 只傳要更新的 key，未傳的 key 保持不變。
+
+### 查詢 Custom Table 清單
+
+```http
+GET /api/v1/data/objects
+Authorization: Bearer {admin_token}
+```
+
+回傳含 `id`（UUID）、`api_slug`、`fields` 的陣列，可由此取得各表 UUID。
+
+### Deploy-time Bake 模式
+
+Custom Table 資料無法被 Custom App User token 讀取。若前端需要讀取設定值，
+**在 deploy 腳本中 fetch 並 embed 進 VFS JSON**，不要嘗試 runtime queryCustom：
+
+```python
+# deploy_ordering.py
+settings = fetch_app_settings(h)          # GET /data/objects/{uuid}/records
+vfs["src/app_settings.json"] = json.dumps(settings)  # bake 進 VFS
+```
+
+```ts
+// 前端 App.tsx
+import APP_SETTINGS from "./app_settings.json";
+const cutoffTime = (APP_SETTINGS as any).order_cutoff_time || "";
+```
+
+設定變更後需重新 deploy 才生效（可接受，因設定不常變動）。
 
 ### 本專案 Custom Table 清單
 
-| api_slug | Object UUID | 欄位 | 用途 |
-|---------|------------|------|------|
-| `x_price_log` | `0838e79c-52bb-4d2a-bac8-92eaef87f691` | `product_id`, `price`, `effective_date` | 每日售價，deploy 時靜態 embed |
-| `x_holiday_settings` | `96d01299-1d33-4ca7-b437-4bf5c78dfdcf` | `date`, `reason` | 假日清單，deploy 時靜態 embed |
-| `x_app_settings` | `fc8e665a-9156-400d-8c6a-a9c2c6f4574e` | `key`, `value`, `updated_at` | 應用設定 |
+| api_slug | Object UUID | 欄位 | 用途 | 存取方式 |
+|---------|------------|------|------|---------|
+| `x_price_log` | `0838e79c-52bb-4d2a-bac8-92eaef87f691` | `product_id`, `price`, `effective_date` | 每日售價 | Deploy-time bake |
+| `x_holiday_settings` | `96d01299-1d33-4ca7-b437-4bf5c78dfdcf` | `date`, `reason` | 假日清單 | Deploy-time bake |
+| `x_app_settings` | `fc8e665a-9156-400d-8c6a-a9c2c6f4574e` | `key`, `value`, `updated_at` | 應用設定（截止時間等）| Deploy-time bake |
 
 ---
 

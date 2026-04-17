@@ -13,14 +13,16 @@
 import json
 
 
-def build_vfs(price_data: dict = None, holiday_dates: list = None) -> dict:
+def build_vfs(price_data: dict = None, holiday_dates: list = None, app_settings: dict = None) -> dict:
     """回傳完整的 VFS dict。
     price_data: {product_id: {price, effective_date}}
     holiday_dates: ['YYYY-MM-DD', ...]
+    app_settings: {key: value}
     """
     vfs = {}
     vfs["src/price_data.json"] = json.dumps(price_data or {}, ensure_ascii=False)
     vfs["src/holiday_data.json"] = json.dumps(holiday_dates or [], ensure_ascii=False)
+    vfs["src/app_settings.json"] = json.dumps(app_settings or {}, ensure_ascii=False)
 
     # ── package.json ──
     vfs["package.json"] = json.dumps({
@@ -66,6 +68,7 @@ import OrdersPage from "./pages/OrdersPage";
 import BottomNav from "./components/BottomNav";
 import * as db from "./db";
 import HOLIDAY_DATA from "./holiday_data.json";
+import APP_SETTINGS from "./app_settings.json";
 
 const HOLIDAYS = new Set<string>(HOLIDAY_DATA as string[]);
 function toYMD(d: Date): string {
@@ -112,7 +115,7 @@ export default function App() {
   const [cart, setCart] = useState<Record<string, number>>(loadCart);
   const [uomMap, setUomMap] = useState<Record<string, string>>({});
   const [deliveryDate, setDeliveryDate] = useState<string>(getFirstAvailableDate);
-  const [cutoffTime, setCutoffTime] = useState<string>("");
+  const cutoffTime: string = (APP_SETTINGS as any).order_cutoff_time || "";
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -132,7 +135,7 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  // 登入後載入計量單位對照表 + 截止時間設定
+  // 登入後載入計量單位對照表
   useEffect(() => {
     if (!user) return;
     db.query("uom_uom", { filters: [{ column: "active", op: "eq", value: true }] })
@@ -140,11 +143,6 @@ export default function App() {
         const map: Record<string, string> = {};
         for (const u of Array.isArray(res) ? res : []) map[String(u.id)] = u.name;
         setUomMap(map);
-      }).catch(() => {});
-    db.query("x_app_settings", { filters: [{ column: "key", op: "eq", value: "order_cutoff_time" }] })
-      .then(res => {
-        const row = Array.isArray(res) ? res[0] : null;
-        if (row?.value) setCutoffTime(String(row.value));
       }).catch(() => {});
   }, [user]);
 
@@ -866,6 +864,20 @@ export async function insert(table: string, data: Record<string, any>): Promise<
   return _r(await fetch(proxyBase + table, {
     method: 'POST', headers: _h(), credentials: 'include', body: JSON.stringify(data),
   }));
+}
+
+export async function update(table: string, id: string, data: Record<string, any>): Promise<any> {
+  return _r(await fetch(proxyBase + table + '/' + id, {
+    method: 'PATCH', headers: _h(), credentials: 'include', body: JSON.stringify(data),
+  }));
+}
+
+export async function queryCustom(slug: string): Promise<any[]> {
+  const resp = await fetch(API_BASE + '/data/objects/' + slug + '/records', {
+    headers: _h(), credentials: 'include',
+  });
+  if (!resp.ok) return [];
+  return resp.json();
 }
 
 export async function runAction(actionName: string, params: Record<string, any> = {}): Promise<any> {

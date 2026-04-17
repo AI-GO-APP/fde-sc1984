@@ -54,7 +54,6 @@ def ensure_references(h: dict, app_id: str):
     tables = [
         {"table_name": "sale_orders", "columns": ["id", "name", "state", "date_order", "customer_id", "note", "amount_total"], "permissions": ["read", "create", "update"]},
         {"table_name": "sale_order_lines", "columns": ["id", "order_id", "product_id", "product_template_id", "product_uom_qty", "price_unit", "name", "delivery_date"], "permissions": ["read", "create", "update"]},
-        {"table_name": "x_app_settings", "columns": ["id", "key", "value"], "permissions": ["read"]},
         {"table_name": "product_templates", "columns": ["id", "name", "default_code", "sale_ok", "active", "categ_id", "list_price", "uom_id"], "permissions": ["read"]},
         {"table_name": "product_categories", "columns": ["id", "name", "parent_id", "active"], "permissions": ["read"]},
         {"table_name": "customers", "columns": ["id", "name", "email", "ref", "customer_type"], "permissions": ["read", "create"]},
@@ -93,6 +92,26 @@ def fetch_price_data(h: dict) -> dict:
             latest[pid] = {"price": price, "effective_date": eff}
     print(f"  x_price_log：{len(records)} 筆記錄，{len(latest)} 個商品有效價格")
     return latest
+
+
+APP_SETTINGS_UUID = "fc8e665a-9156-400d-8c6a-a9c2c6f4574e"
+
+
+def fetch_app_settings(h: dict) -> dict:
+    """從 x_app_settings 拉設定，回傳 {key: value}"""
+    status, body = _req("GET", f"{API_BASE}/data/objects/{APP_SETTINGS_UUID}/records", h, timeout=30)
+    if status != 200:
+        print(f"  ⚠️ 拉取 x_app_settings 失敗：{status}")
+        return {}
+    records = body if isinstance(body, list) else []
+    result = {}
+    for rec in records:
+        d = rec.get("data") or {}
+        k, v = d.get("key"), d.get("value")
+        if k and v is not None:
+            result[k] = v
+    print(f"  x_app_settings：{result}")
+    return result
 
 
 HOLIDAY_UUID = "96d01299-1d33-4ca7-b437-4bf5c78dfdcf"
@@ -185,9 +204,10 @@ def main():
     print("\n[2.5/4] 拉取靜態資料...")
     price_data = fetch_price_data(h)
     holiday_dates = fetch_holiday_data(h)
+    app_settings = fetch_app_settings(h)
 
     print("\n[3/4] 組裝並上傳 VFS...")
-    vfs = build_vfs(price_data, holiday_dates)
+    vfs = build_vfs(price_data, holiday_dates, app_settings)
     upload_vfs(h, app_id, vfs)
 
     print("\n[3.5/4] 編譯驗證...")
