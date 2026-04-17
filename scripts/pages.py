@@ -72,43 +72,86 @@ export default function DashboardPage() {
 
 
 def purchase_list() -> str:
-    return r'''import { useState } from 'react';
+    return r'''import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../data/DataProvider';
 import DatePickerWithCounts from '../../components/DatePickerWithCounts';
+import * as db from '../../db';
 const Arrow = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>;
 const InboxIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>;
 export default function PurchaseListPage() {
   const nav = useNavigate();
   const { orders, customers, orderLines: lines, loading, selectedDate, setSelectedDate } = useData();
-  const [view, setView] = useState<'customer'|'product'>('customer');
+  const [view, setView] = useState<'order'|'product'>('order');
   const [expanded, setExpanded] = useState<string|null>(null);
+  const [priceLogs, setPriceLogs] = useState<any[]>([]);
+
+  // 拉取 x_price_log（含歷史售價），用於依日期估算小計
+  useEffect(() => {
+    db.queryCustom('x_price_log').then(data => setPriceLogs(Array.isArray(data) ? data : [])).catch(() => {});
+  }, []);
+
+  // 依 selectedDate 取各品項最近一筆歷史售價（effective_date <= selectedDate）
+  const priceMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const sorted = [...priceLogs].sort((a: any, b: any) =>
+      String(b.data?.effective_date || b.effective_date || '').localeCompare(
+        String(a.data?.effective_date || a.effective_date || '')
+      )
+    );
+    for (const entry of sorted) {
+      const d = entry.data || entry;
+      const pid = d.product_id; const price = Number(d.price || 0);
+      const effDate = String(d.effective_date || '');
+      if (pid && price > 0 && effDate <= selectedDate && !map[pid]) map[pid] = price;
+    }
+    return map;
+  }, [priceLogs, selectedDate]);
+
   const dlv = (o:any) => (typeof o.note === 'string' ? o.note : '').match(/配送日期：(\d{4}-\d{2}-\d{2})/)?.[1] || (o.date_order||o.created_at||'').slice(0,10);
   const isDraft = (o:any) => !o.state || o.state === 'draft';
   const draftOrders = orders.filter(o => isDraft(o) && dlv(o) === selectedDate);
-  const custGroups = new Map<string,any[]>();
-  for(const o of draftOrders){const l=custGroups.get(o.customer_id)||[];l.push(o);custGroups.set(o.customer_id,l);}
-  const prodSummary = new Map<string,{name:string;totalQty:number;count:number}>();
-  for(const l of lines.filter(l=>draftOrders.some(o=>o.id===l.order_id))){
-    const ex=prodSummary.get(l.product_template_id||l.product_id)||{name:l.name||'—',totalQty:0,count:0};
-    ex.totalQty+=Number(l.product_uom_qty||0); ex.count++;
-    prodSummary.set(l.product_template_id||l.product_id,ex);
-  }
-  if(loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400">載入中...</p></div>;
+
+  // 各品項需求彙總（按品項 view 用）
+  const prodSummary = useMemo(() => {
+    const map = new Map<string,{name:string;totalQty:number;count:number}>();
+    for(const l of lines.filter(l=>draftOrders.some(o=>o.id===l.order_id))){
+      const key = l.product_template_id||l.product_id;
+      const ex = map.get(key)||{name:l.name||'—',totalQty:0,count:0};
+      ex.totalQty+=Number(l.product_uom_qty||0); ex.count++;
+      map.set(key,ex);
+    }
+    return map;
+  }, [lines, draftOrders]);
+
+  const grandTotal = useMemo(() =>
+    draftOrders.reduce((sum, o) => {
+      const ol = lines.filter(l => l.order_id === o.id);
+      return sum + ol.reduce((s, l) => {
+        const pid = l.product_template_id||l.product_id;
+        const price = priceMap[pid] ?? Number(l.price_unit||0);
+        return s + Math.round(Number(l.product_uom_qty||0) * price);
+      }, 0);
+    }, 0),
+    [draftOrders, lines, priceMap]
+  );
+
+  if(loading) return <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#f9fafb'}}><p className="text-gray-400">載入中...</p></div>;
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#f9fafb'}}>
+      <header style={{flexShrink:0}} className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
           <div><h1 className="text-xl font-bold text-gray-900">訂單接收</h1>
-          <p className="text-sm text-gray-400">{draftOrders.length} 筆訂單 · {custGroups.size} 位客戶 · {prodSummary.size} 品項</p></div>
+          <p className="text-sm text-gray-400">{draftOrders.length} 筆訂單 · 合計 ${grandTotal.toLocaleString()}</p></div>
         </div>
         <DatePickerWithCounts value={selectedDate} onChange={setSelectedDate} />
       </header>
-      <div className="px-6 pt-4 flex gap-2">
-        <button onClick={()=>setView('customer')} className={`px-4 py-1.5 rounded-full text-sm transition-colors ${view==='customer'?'bg-primary text-white':'bg-gray-100 text-gray-600'}`}>按客戶</button>
+      <div style={{flexShrink:0}} className="px-6 pt-4 flex gap-2">
+        <button onClick={()=>setView('order')} className={`px-4 py-1.5 rounded-full text-sm transition-colors ${view==='order'?'bg-primary text-white':'bg-gray-100 text-gray-600'}`}>按訂單</button>
         <button onClick={()=>setView('product')} className={`px-4 py-1.5 rounded-full text-sm transition-colors ${view==='product'?'bg-primary text-white':'bg-gray-100 text-gray-600'}`}>按品項彙總</button>
       </div>
+      <div style={{flex:1,overflowY:'auto'}}>
       <div className="p-6 max-w-5xl mx-auto">
         {draftOrders.length===0?(
           <div className="text-center py-12 space-y-3">
@@ -116,19 +159,45 @@ export default function PurchaseListPage() {
             <p className="text-gray-500 font-medium">暫無待處理訂單</p>
             <p className="text-sm text-gray-400">當客戶提交新訂單後，將會出現在這裡</p>
           </div>
-        ):view==='customer'?(
-          <div className="space-y-3">{Array.from(custGroups.entries()).map(([cid,cos])=>{
-            const cust=customers[cid]; const exp=expanded===cid;
-            const orderLines = lines.filter(l=>cos.some(o=>o.id===l.order_id));
+        ):view==='order'?(
+          <div className="space-y-3">{draftOrders.map(o=>{
+            const cust=customers[o.customer_id]; const exp=expanded===o.id;
+            const ol = lines.filter(l=>l.order_id===o.id);
+            const orderTotal = ol.reduce((s,l)=>{
+              const pid=l.product_template_id||l.product_id;
+              const price=priceMap[pid]??Number(l.price_unit||0);
+              return s+Math.round(Number(l.product_uom_qty||0)*price);
+            },0);
             return (
-              <div key={cid} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                <div role="button" onClick={()=>setExpanded(exp?null:cid)} className="w-full px-4 py-4 flex justify-between items-center bg-white hover:bg-gray-50 cursor-pointer">
-                  <div className="text-left"><p className="font-bold text-gray-900">{cust?.name||cid}</p><p className="text-sm text-gray-400">{cos.length} 筆訂單 · {orderLines.length} 品項</p></div>
-                  <span className="text-gray-400 text-xl">{exp?'▾':'▸'}</span>
+              <div key={o.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div role="button" onClick={()=>setExpanded(exp?null:o.id)} className="w-full px-4 py-4 flex justify-between items-center bg-white hover:bg-gray-50 cursor-pointer">
+                  <div className="text-left">
+                    <p className="font-bold text-gray-900">{cust?.name||'—'}</p>
+                    <p className="text-sm text-gray-400">{o.name||o.id.slice(0,8)} · {ol.length} 品項</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-primary">${orderTotal.toLocaleString()}</span>
+                    <span className="text-gray-400 text-xl">{exp?'▾':'▸'}</span>
+                  </div>
                 </div>
                 {exp&&<div className="border-t border-gray-100 px-4 py-3">
                   <table className="w-full text-sm"><thead><tr className="text-gray-400 text-xs"><th className="py-1 text-left">品名</th><th className="py-1 text-right">數量</th><th className="py-1 text-right">單價</th><th className="py-1 text-right">小計</th></tr></thead><tbody>
-                    {orderLines.map(l=>(<tr key={l.id} className="border-t border-gray-50"><td className="py-1.5 font-medium">{l.name||'—'}</td><td className="py-1.5 text-right">{Number(l.product_uom_qty||0).toFixed(1)}</td><td className="py-1.5 text-right">${Number(l.price_unit||0).toLocaleString()}</td><td className="py-1.5 text-right font-bold text-primary">${Number(l.price_subtotal||0).toLocaleString()}</td></tr>))}
+                    {ol.map(l=>{
+                      const pid=l.product_template_id||l.product_id;
+                      const price=priceMap[pid]??Number(l.price_unit||0);
+                      const qty=Number(l.product_uom_qty||0);
+                      const subtotal=Math.round(qty*price);
+                      const isPriceFromLog=pid&&priceMap[pid]!=null&&priceMap[pid]!==Number(l.price_unit||0);
+                      return (<tr key={l.id} className="border-t border-gray-50">
+                        <td className="py-1.5 font-medium">{l.name||'—'}</td>
+                        <td className="py-1.5 text-right">{qty.toFixed(1)}</td>
+                        <td className="py-1.5 text-right">
+                          ${price.toLocaleString()}
+                          {isPriceFromLog&&<span className="text-amber-500 text-xs ml-1" title="依最近歷史售價估算">*</span>}
+                        </td>
+                        <td className="py-1.5 text-right font-bold text-primary">${subtotal.toLocaleString()}</td>
+                      </tr>);
+                    })}
                   </tbody></table>
                 </div>}
               </div>
@@ -147,6 +216,7 @@ export default function PurchaseListPage() {
             </tbody></table>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -140,6 +140,11 @@ def build_vfs(holiday_data: list = None) -> dict:
         'import App from "./App";\n'
         'import ErrorBoundary from "./components/ErrorBoundary";\n'
         'const rootEl = (window as any).__CUSTOM_APP_ROOT__ || document.getElementById("root");\n'
+        'if (rootEl) {\n'
+        '  const el = rootEl as HTMLElement;\n'
+        '  el.style.overflowY = "auto";\n'
+        '  el.style.height = "100%";\n'
+        '}\n'
         'ReactDOM.createRoot(rootEl!).render(<React.StrictMode><ErrorBoundary><HashRouter><App /></HashRouter></ErrorBoundary></React.StrictMode>);\n'
     )
     vfs["src/components/ErrorBoundary.tsx"] = r"""import React from "react";
