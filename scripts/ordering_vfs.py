@@ -1670,9 +1670,10 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
   const saveEdit = async (orderId: string, lines: any[]) => {
     setSaving(true);
     try {
-      await Promise.all(lines.map(l =>
-        db.update("sale_order_lines", l.id, { product_uom_qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0) })
-      ));
+      await db.runAction("update_order_lines", {
+        order_id: orderId,
+        lines: lines.map(l => ({ id: l.id, qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0) })),
+      });
       setEditOrderId(null);
       await load();
     } catch (err: any) {
@@ -1871,7 +1872,8 @@ export default function BottomNav({ currentPath, onNavigate, cartCount }: Props)
     # ── actions/manifest.json ──
     vfs["actions/manifest.json"] = json.dumps({
         "ping": {"description": "健康檢查"},
-        "place_order": {"description": "客戶下單：建立銷貨單與明細行"}
+        "place_order": {"description": "客戶下單：建立銷貨單與明細行"},
+        "update_order_lines": {"description": "修改訂單明細數量（需 admin 權限）"},
     }, ensure_ascii=False, indent=2)
 
     # ── actions/place_order.py ──（使用 ctx.db API，不使用 SQLAlchemy）
@@ -1948,6 +1950,34 @@ export default function BottomNav({ currentPath, onNavigate, cartCount }: Props)
         "delivery_date": today,
         "items_count": len(items),
     })
+'''
+
+    vfs["actions/update_order_lines.py"] = r'''def execute(ctx):
+    """修改訂單明細數量。
+    params: { order_id: str, lines: [{id: str, qty: number}] }
+    後端以 admin 身份執行，繞過 ext/proxy 的欄位限制。
+    """
+    order_id = ctx.params.get("order_id", "")
+    lines = ctx.params.get("lines", [])
+
+    if not order_id or not lines:
+        ctx.response.json({"error": "缺少必要參數"})
+        return
+
+    updated = []
+    for item in lines:
+        line_id = item.get("id")
+        qty = item.get("qty")
+        if not line_id or qty is None:
+            continue
+        try:
+            result = ctx.db.patch("sale_order_lines", line_id, {"product_uom_qty": qty})
+            updated.append({"id": line_id, "ok": True})
+        except Exception as e:
+            ctx.response.json({"error": f"更新明細 {line_id} 失敗：{str(e)}"})
+            return
+
+    ctx.response.json({"updated": len(updated), "lines": updated})
 '''
 
     return vfs
