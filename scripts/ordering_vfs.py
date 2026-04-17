@@ -112,6 +112,7 @@ export default function App() {
   const [cart, setCart] = useState<Record<string, number>>(loadCart);
   const [uomMap, setUomMap] = useState<Record<string, string>>({});
   const [deliveryDate, setDeliveryDate] = useState<string>(getFirstAvailableDate);
+  const [cutoffTime, setCutoffTime] = useState<string>("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -131,7 +132,7 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  // 登入後載入計量單位對照表
+  // 登入後載入計量單位對照表 + 截止時間設定
   useEffect(() => {
     if (!user) return;
     db.query("uom_uom", { filters: [{ column: "active", op: "eq", value: true }] })
@@ -139,6 +140,11 @@ export default function App() {
         const map: Record<string, string> = {};
         for (const u of Array.isArray(res) ? res : []) map[String(u.id)] = u.name;
         setUomMap(map);
+      }).catch(() => {});
+    db.query("x_app_settings", { filters: [{ column: "key", op: "eq", value: "order_cutoff_time" }] })
+      .then(res => {
+        const row = Array.isArray(res) ? res[0] : null;
+        if (row?.value) setCutoffTime(String(row.value));
       }).catch(() => {});
   }, [user]);
 
@@ -191,7 +197,7 @@ export default function App() {
   const pages: Record<string, React.ReactNode> = {
     "/": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} />,
     "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCart={clearCart} onNavigate={setCurrentPath} uomMap={uomMap} user={user} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} />,
-    "/orders": <OrdersPage user={user!} />,
+    "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
   };
 
   return (
@@ -1547,43 +1553,57 @@ import { AppUser } from "../App";
 import { RefreshCw } from "lucide-react";
 
 const STATE_LABELS: Record<string, string> = {
-  draft: "草稿", sent: "已送出", sale: "已確認", done: "完成", cancel: "已取消",
+  draft: "已送出", sent: "已送出", sale: "已確認", done: "完成", cancel: "已取消",
 };
 const STATE_COLORS: Record<string, string> = {
-  draft: "#f59e0b", sent: "#3b82f6", sale: "#10b981", done: "#6b7280", cancel: "#ef4444",
+  draft: "#3b82f6", sent: "#3b82f6", sale: "#10b981", done: "#6b7280", cancel: "#ef4444",
 };
 
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
 function parseDeliveryDate(note: string): string {
   const m = note?.match(/配送日期：(\d{4}-\d{2}-\d{2})/);
   return m ? m[1] : "";
 }
-
 function parseNote(note: string): string {
   return (note || "").replace(/配送日期：\d{4}-\d{2}-\d{2}\n?/, "").trim();
 }
-
-interface OrderWithLines {
-  order: any;
-  lines: any[];
+function canEditOrder(order: any, cutoffTime: string): boolean {
+  if (order.state !== "draft") return false;
+  const delivery = parseDeliveryDate(order.note || "");
+  if (!delivery) return false;
+  const now = new Date();
+  const todayYMD = toYMD(now);
+  if (cutoffTime) {
+    const [cutH, cutM] = cutoffTime.split(":").map(Number);
+    const isPastCutoff = now.getHours() * 60 + now.getMinutes() >= cutH * 60 + cutM;
+    if (isPastCutoff) return delivery > todayYMD;
+  }
+  return delivery >= todayYMD;
 }
 
-export default function OrdersPage({ user }: { user: AppUser }) {
+interface OrderWithLines { order: any; lines: any[]; }
+
+export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoffTime: string }) {
   const [items, setItems] = useState<OrderWithLines[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorInfo, setErrorInfo] = useState("");
+  const [editOrderId, setEditOrderId] = useState<string | null>(null);
+  const [editQtys, setEditQtys] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setErrorInfo("");
+    setEditOrderId(null);
     try {
-      // 1. 找客戶 ID
       const custs = await db.query("customers", {
         filters: [{ column: "email", op: "eq", value: user.email }],
       });
       const cust = Array.isArray(custs) ? custs[0] : null;
       if (!cust) { setItems([]); return; }
 
-      // 2. 撈該客戶訂單
       const orders = await db.query("sale_orders", {
         filters: [{ column: "customer_id", op: "eq", value: cust.id }],
       });
@@ -1592,14 +1612,12 @@ export default function OrdersPage({ user }: { user: AppUser }) {
         new Date(b.date_order || 0).getTime() - new Date(a.date_order || 0).getTime()
       );
 
-      // 3. 並行撈所有訂單的明細
       const results = await Promise.all(list.map(async o => {
         const lines = await db.query("sale_order_lines", {
           filters: [{ column: "order_id", op: "eq", value: o.id }],
         });
         return { order: o, lines: Array.isArray(lines) ? lines : [] };
       }));
-
       setItems(results);
     } catch (err: any) {
       setErrorInfo(err.message || "載入失敗");
@@ -1609,6 +1627,28 @@ export default function OrdersPage({ user }: { user: AppUser }) {
   };
 
   useEffect(() => { load(); }, []);
+
+  const startEdit = (o: any, lines: any[]) => {
+    const qtys: Record<string, number> = {};
+    for (const l of lines) qtys[l.id] = Number(l.product_uom_qty || 0);
+    setEditQtys(qtys);
+    setEditOrderId(o.id);
+  };
+
+  const saveEdit = async (orderId: string, lines: any[]) => {
+    setSaving(true);
+    try {
+      await Promise.all(lines.map(l =>
+        db.update("sale_order_lines", l.id, { product_uom_qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0) })
+      ));
+      setEditOrderId(null);
+      await load();
+    } catch (err: any) {
+      alert("儲存失敗：" + (err.message || "未知錯誤"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="orders-page">
@@ -1630,6 +1670,8 @@ export default function OrdersPage({ user }: { user: AppUser }) {
             const total = typeof o.amount_total === "number"
               ? o.amount_total.toLocaleString("zh-TW", { minimumFractionDigits: 0 })
               : null;
+            const isEditing = editOrderId === o.id;
+            const editable = canEditOrder(o, cutoffTime);
             return (
               <div key={o.id} className="order-card">
                 <div className="order-top">
@@ -1653,12 +1695,39 @@ export default function OrdersPage({ user }: { user: AppUser }) {
                       {lines.map((l: any) => (
                         <tr key={l.id}>
                           <td>{String(l.name || l.id || "")}</td>
-                          <td>{l.product_uom_qty ?? "—"}</td>
+                          <td>
+                            {isEditing ? (
+                              <input
+                                type="number" min="0" step="0.1"
+                                value={editQtys[l.id] ?? Number(l.product_uom_qty || 0)}
+                                onChange={e => setEditQtys(prev => ({ ...prev, [l.id]: Number(e.target.value) }))}
+                                style={{ width: "64px", padding: "2px 4px", border: "1px solid #d1d5db", borderRadius: "4px", fontSize: "13px", textAlign: "right" }}
+                              />
+                            ) : (l.product_uom_qty ?? "—")}
+                          </td>
                           <td>{typeof l.price_unit === "number" ? `$${l.price_unit.toLocaleString()}` : "—"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                )}
+                {editable && !isEditing && (
+                  <button
+                    onClick={() => startEdit(o, lines)}
+                    style={{ marginTop: "8px", padding: "6px 16px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", cursor: "pointer", color: "#374151", width: "100%" }}
+                  >修改</button>
+                )}
+                {isEditing && (
+                  <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+                    <button
+                      onClick={() => saveEdit(o.id, lines)} disabled={saving}
+                      style={{ flex: 1, padding: "8px", background: "#16a34a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "13px", cursor: "pointer", fontWeight: 600 }}
+                    >{saving ? "儲存中..." : "儲存"}</button>
+                    <button
+                      onClick={() => setEditOrderId(null)} disabled={saving}
+                      style={{ flex: 1, padding: "8px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", cursor: "pointer", color: "#374151" }}
+                    >取消</button>
+                  </div>
                 )}
               </div>
             );

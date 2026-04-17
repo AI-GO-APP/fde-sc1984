@@ -53,7 +53,8 @@ def ensure_references(h: dict, app_id: str):
     ex = {x["table_name"]: x for x in (body if status == 200 else [])}
     tables = [
         {"table_name": "sale_orders", "columns": ["id", "name", "state", "date_order", "customer_id", "note", "amount_total"], "permissions": ["read", "create", "update"]},
-        {"table_name": "sale_order_lines", "columns": ["id", "order_id", "product_id", "product_template_id", "product_uom_qty", "price_unit", "name", "delivery_date"], "permissions": ["read", "create"]},
+        {"table_name": "sale_order_lines", "columns": ["id", "order_id", "product_id", "product_template_id", "product_uom_qty", "price_unit", "name", "delivery_date"], "permissions": ["read", "create", "update"]},
+        {"table_name": "x_app_settings", "columns": ["id", "key", "value"], "permissions": ["read"]},
         {"table_name": "product_templates", "columns": ["id", "name", "default_code", "sale_ok", "active", "categ_id", "list_price", "uom_id"], "permissions": ["read"]},
         {"table_name": "product_categories", "columns": ["id", "name", "parent_id", "active"], "permissions": ["read"]},
         {"table_name": "customers", "columns": ["id", "name", "email", "ref", "customer_type"], "permissions": ["read", "create"]},
