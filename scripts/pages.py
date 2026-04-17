@@ -79,19 +79,43 @@ import DatePickerWithCounts from '../../components/DatePickerWithCounts';
 import * as db from '../../db';
 const Arrow = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>;
 const InboxIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>;
+
+function LineTable({ rows }: { rows: { id:string; name:string; qty:number; price:number; subtotal:number; fromLog:boolean }[] }) {
+  return (
+    <table className="w-full text-sm">
+      <thead><tr className="text-gray-400 text-xs">
+        <th className="py-1 text-left">品名</th>
+        <th className="py-1 text-right w-20">數量</th>
+        <th className="py-1 text-right w-28">單價</th>
+        <th className="py-1 text-right w-28">小計</th>
+      </tr></thead>
+      <tbody>
+        {rows.map(l=>(
+          <tr key={l.id} className="border-t border-gray-50">
+            <td className="py-1.5 font-medium">{l.name}</td>
+            <td className="py-1.5 text-right text-gray-500">{l.qty.toFixed(1)}</td>
+            <td className="py-1.5 text-right text-gray-600">
+              ${l.price.toLocaleString()}
+              {l.fromLog&&<span className="text-amber-500 text-xs ml-1" title="依最近歷史售價估算">*</span>}
+            </td>
+            <td className="py-1.5 text-right font-bold text-primary">${l.subtotal.toLocaleString()}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export default function PurchaseListPage() {
   const nav = useNavigate();
   const { orders, customers, orderLines: lines, loading, selectedDate, setSelectedDate } = useData();
-  const [view, setView] = useState<'order'|'product'>('order');
-  const [expanded, setExpanded] = useState<string|null>(null);
+  const [view, setView] = useState<'raw'|'customer'|'product'>('raw');
   const [priceLogs, setPriceLogs] = useState<any[]>([]);
 
-  // 拉取 x_price_log（含歷史售價），用於依日期估算小計
   useEffect(() => {
     db.queryCustom('x_price_log').then(data => setPriceLogs(Array.isArray(data) ? data : [])).catch(() => {});
   }, []);
 
-  // 依 selectedDate 取各品項最近一筆歷史售價（effective_date <= selectedDate）
   const priceMap = useMemo(() => {
     const map: Record<string, number> = {};
     const sorted = [...priceLogs].sort((a: any, b: any) =>
@@ -110,31 +134,67 @@ export default function PurchaseListPage() {
 
   const dlv = (o:any) => (typeof o.note === 'string' ? o.note : '').match(/配送日期：(\d{4}-\d{2}-\d{2})/)?.[1] || (o.date_order||o.created_at||'').slice(0,10);
   const isDraft = (o:any) => !o.state || o.state === 'draft';
-  const draftOrders = orders.filter(o => isDraft(o) && dlv(o) === selectedDate);
 
-  // 各品項需求彙總（按品項 view 用）
-  const prodSummary = useMemo(() => {
-    const map = new Map<string,{name:string;totalQty:number;count:number}>();
-    for(const l of lines.filter(l=>draftOrders.some(o=>o.id===l.order_id))){
-      const key = l.product_template_id||l.product_id;
-      const ex = map.get(key)||{name:l.name||'—',totalQty:0,count:0};
-      ex.totalQty+=Number(l.product_uom_qty||0); ex.count++;
-      map.set(key,ex);
-    }
-    return map;
-  }, [lines, draftOrders]);
+  const draftOrders = useMemo(() =>
+    orders
+      .filter(o => isDraft(o) && dlv(o) === selectedDate)
+      .sort((a,b) => String(a.date_order||a.created_at||'').localeCompare(String(b.date_order||b.created_at||''))),
+    [orders, selectedDate]
+  );
 
-  const grandTotal = useMemo(() =>
-    draftOrders.reduce((sum, o) => {
-      const ol = lines.filter(l => l.order_id === o.id);
-      return sum + ol.reduce((s, l) => {
+  const getLineRows = (orderList: any[]) =>
+    lines
+      .filter(l => orderList.some(o => o.id === l.order_id))
+      .map(l => {
         const pid = l.product_template_id||l.product_id;
         const price = priceMap[pid] ?? Number(l.price_unit||0);
-        return s + Math.round(Number(l.product_uom_qty||0) * price);
-      }, 0);
-    }, 0),
+        const qty = Number(l.product_uom_qty||0);
+        return { id: l.id, name: l.name||'—', qty, price, subtotal: Math.round(qty*price), fromLog: pid != null && priceMap[pid] != null && priceMap[pid] !== Number(l.price_unit||0) };
+      });
+
+  const grandTotal = useMemo(() =>
+    getLineRows(draftOrders).reduce((s,l) => s+l.subtotal, 0),
     [draftOrders, lines, priceMap]
   );
+
+  // 按客戶匯總：同客戶跨訂單彙總各品項數量
+  const customerGroups = useMemo(() => {
+    const map = new Map<string, { orders: any[]; prodMap: Map<string,{name:string;qty:number;price:number;fromLog:boolean}> }>();
+    for (const o of draftOrders) {
+      const cid = o.customer_id;
+      if (!map.has(cid)) map.set(cid, { orders: [], prodMap: new Map() });
+      const g = map.get(cid)!;
+      g.orders.push(o);
+      for (const l of lines.filter(l => l.order_id === o.id)) {
+        const pid = l.product_template_id||l.product_id||l.id;
+        const price = priceMap[pid] ?? Number(l.price_unit||0);
+        const qty = Number(l.product_uom_qty||0);
+        const ex = g.prodMap.get(pid) || { name: l.name||'—', qty: 0, price, fromLog: pid != null && priceMap[pid] != null && priceMap[pid] !== Number(l.price_unit||0) };
+        ex.qty += qty;
+        g.prodMap.set(pid, ex);
+      }
+    }
+    return map;
+  }, [draftOrders, lines, priceMap]);
+
+  // 按品項匯總：跨客戶跨訂單
+  const prodSummary = useMemo(() => {
+    const map = new Map<string,{name:string;totalQty:number;orderCount:number}>();
+    for (const l of lines.filter(l => draftOrders.some(o => o.id === l.order_id))) {
+      const key = l.product_template_id||l.product_id;
+      const ex = map.get(key) || { name: l.name||'—', totalQty: 0, orderCount: 0 };
+      ex.totalQty += Number(l.product_uom_qty||0);
+      ex.orderCount++;
+      map.set(key, ex);
+    }
+    return Array.from(map.entries()).sort((a,b) => b[1].totalQty - a[1].totalQty);
+  }, [lines, draftOrders]);
+
+  const tabs: {key:'raw'|'customer'|'product'; label:string}[] = [
+    { key: 'raw', label: '原始訂單' },
+    { key: 'customer', label: '按客戶匯總' },
+    { key: 'product', label: '按品項匯總' },
+  ];
 
   if(loading) return <div style={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center',background:'#f9fafb'}}><p className="text-gray-400">載入中...</p></div>;
   return (
@@ -142,81 +202,95 @@ export default function PurchaseListPage() {
       <header style={{flexShrink:0}} className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
-          <div><h1 className="text-xl font-bold text-gray-900">訂單接收</h1>
-          <p className="text-sm text-gray-400">{draftOrders.length} 筆訂單 · 合計 ${grandTotal.toLocaleString()}</p></div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">訂單接收</h1>
+            <p className="text-sm text-gray-400">{draftOrders.length} 筆訂單 · 合計 ${grandTotal.toLocaleString()}</p>
+          </div>
         </div>
         <DatePickerWithCounts value={selectedDate} onChange={setSelectedDate} />
       </header>
       <div style={{flexShrink:0}} className="px-6 pt-4 flex gap-2">
-        <button onClick={()=>setView('order')} className={`px-4 py-1.5 rounded-full text-sm transition-colors ${view==='order'?'bg-primary text-white':'bg-gray-100 text-gray-600'}`}>按訂單</button>
-        <button onClick={()=>setView('product')} className={`px-4 py-1.5 rounded-full text-sm transition-colors ${view==='product'?'bg-primary text-white':'bg-gray-100 text-gray-600'}`}>按品項彙總</button>
+        {tabs.map(t=>(
+          <button key={t.key} onClick={()=>setView(t.key)} className={`px-4 py-1.5 rounded-full text-sm transition-colors ${view===t.key?'bg-primary text-white':'bg-gray-100 text-gray-600'}`}>{t.label}</button>
+        ))}
       </div>
       <div style={{flex:1,overflowY:'auto'}}>
-      <div className="p-6 max-w-5xl mx-auto">
-        {draftOrders.length===0?(
-          <div className="text-center py-12 space-y-3">
-            <InboxIcon />
-            <p className="text-gray-500 font-medium">暫無待處理訂單</p>
-            <p className="text-sm text-gray-400">當客戶提交新訂單後，將會出現在這裡</p>
-          </div>
-        ):view==='order'?(
-          <div className="space-y-3">{draftOrders.map(o=>{
-            const cust=customers[o.customer_id]; const exp=expanded===o.id;
-            const ol = lines.filter(l=>l.order_id===o.id);
-            const orderTotal = ol.reduce((s,l)=>{
-              const pid=l.product_template_id||l.product_id;
-              const price=priceMap[pid]??Number(l.price_unit||0);
-              return s+Math.round(Number(l.product_uom_qty||0)*price);
-            },0);
-            return (
-              <div key={o.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                <div role="button" onClick={()=>setExpanded(exp?null:o.id)} className="w-full px-4 py-4 flex justify-between items-center bg-white hover:bg-gray-50 cursor-pointer">
-                  <div className="text-left">
-                    <p className="font-bold text-gray-900">{cust?.name||'—'}</p>
-                    <p className="text-sm text-gray-400">{o.name||o.id.slice(0,8)} · {ol.length} 品項</p>
+        <div className="p-6 max-w-5xl mx-auto">
+          {draftOrders.length===0?(
+            <div className="text-center py-12 space-y-3">
+              <InboxIcon />
+              <p className="text-gray-500 font-medium">暫無待處理訂單</p>
+              <p className="text-sm text-gray-400">當客戶提交新訂單後，將會出現在這裡</p>
+            </div>
+          ):view==='raw'?(
+            /* ── 原始訂單：按下單時間排序，全部展開 ── */
+            <div className="space-y-4">
+              {draftOrders.map(o=>{
+                const cust = customers[o.customer_id];
+                const rows = getLineRows([o]);
+                const total = rows.reduce((s,l)=>s+l.subtotal,0);
+                return (
+                  <div key={o.id} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-gray-900">{cust?.name||'—'}</p>
+                        <p className="text-xs text-gray-400">{o.name||o.id.slice(0,8)} · {String(o.date_order||o.created_at||'').slice(0,16).replace('T',' ')}</p>
+                      </div>
+                      <span className="font-bold text-primary">${total.toLocaleString()}</span>
+                    </div>
+                    <div className="px-4 py-3"><LineTable rows={rows} /></div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-bold text-primary">${orderTotal.toLocaleString()}</span>
-                    <span className="text-gray-400 text-xl">{exp?'▾':'▸'}</span>
+                );
+              })}
+            </div>
+          ):view==='customer'?(
+            /* ── 按客戶匯總：跨訂單合併同品項數量 ── */
+            <div className="space-y-4">
+              {Array.from(customerGroups.entries()).map(([cid, g])=>{
+                const cust = customers[cid];
+                const rows = Array.from(g.prodMap.entries()).map(([pid,p])=>({
+                  id: pid, name: p.name, qty: p.qty, price: p.price,
+                  subtotal: Math.round(p.qty*p.price), fromLog: p.fromLog
+                }));
+                const custTotal = rows.reduce((s,r)=>s+r.subtotal,0);
+                return (
+                  <div key={cid} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                      <div>
+                        <p className="font-bold text-gray-900">{cust?.name||cid}</p>
+                        <p className="text-xs text-gray-400">{g.orders.length} 筆訂單 · {rows.length} 品項</p>
+                      </div>
+                      <span className="font-bold text-primary">${custTotal.toLocaleString()}</span>
+                    </div>
+                    <div className="px-4 py-3"><LineTable rows={rows} /></div>
                   </div>
-                </div>
-                {exp&&<div className="border-t border-gray-100 px-4 py-3">
-                  <table className="w-full text-sm"><thead><tr className="text-gray-400 text-xs"><th className="py-1 text-left">品名</th><th className="py-1 text-right">數量</th><th className="py-1 text-right">單價</th><th className="py-1 text-right">小計</th></tr></thead><tbody>
-                    {ol.map(l=>{
-                      const pid=l.product_template_id||l.product_id;
-                      const price=priceMap[pid]??Number(l.price_unit||0);
-                      const qty=Number(l.product_uom_qty||0);
-                      const subtotal=Math.round(qty*price);
-                      const isPriceFromLog=pid&&priceMap[pid]!=null&&priceMap[pid]!==Number(l.price_unit||0);
-                      return (<tr key={l.id} className="border-t border-gray-50">
-                        <td className="py-1.5 font-medium">{l.name||'—'}</td>
-                        <td className="py-1.5 text-right">{qty.toFixed(1)}</td>
-                        <td className="py-1.5 text-right">
-                          ${price.toLocaleString()}
-                          {isPriceFromLog&&<span className="text-amber-500 text-xs ml-1" title="依最近歷史售價估算">*</span>}
-                        </td>
-                        <td className="py-1.5 text-right font-bold text-primary">${subtotal.toLocaleString()}</td>
-                      </tr>);
-                    })}
-                  </tbody></table>
-                </div>}
-              </div>
-            );
-          })}</div>
-        ):(
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <table className="w-full text-sm"><thead><tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
-              <th className="py-3 px-4 text-left font-medium">#</th><th className="py-3 px-4 text-left font-medium">品名</th>
-              <th className="py-3 px-4 text-right font-medium">需求總量</th><th className="py-3 px-4 text-right font-medium">筆數</th>
-            </tr></thead><tbody>
-              {Array.from(prodSummary.entries()).map(([id,d],i)=>(<tr key={id} className="border-b border-gray-50 hover:bg-gray-50">
-                <td className="py-3 px-4 text-gray-400">{i+1}</td><td className="py-3 px-4 font-medium">{d.name}</td>
-                <td className="py-3 px-4 text-right font-bold text-primary">{d.totalQty.toFixed(1)}</td><td className="py-3 px-4 text-right">{d.count}</td>
-              </tr>))}
-            </tbody></table>
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          ):(
+            /* ── 按品項匯總：跨客戶跨訂單統計數量 ── */
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead><tr className="bg-gray-50 border-b border-gray-100 text-gray-500">
+                  <th className="py-3 px-4 text-left font-medium">#</th>
+                  <th className="py-3 px-4 text-left font-medium">品名</th>
+                  <th className="py-3 px-4 text-right font-medium">需求總量</th>
+                  <th className="py-3 px-4 text-right font-medium">訂單筆數</th>
+                </tr></thead>
+                <tbody>
+                  {prodSummary.map(([id,d],i)=>(
+                    <tr key={id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-3 px-4 text-gray-400">{i+1}</td>
+                      <td className="py-3 px-4 font-medium">{d.name}</td>
+                      <td className="py-3 px-4 text-right font-bold text-primary">{d.totalQty.toFixed(1)}</td>
+                      <td className="py-3 px-4 text-right text-gray-500">{d.orderCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
