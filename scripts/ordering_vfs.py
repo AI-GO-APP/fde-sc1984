@@ -1670,7 +1670,7 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
   const saveEdit = async (orderId: string, lines: any[]) => {
     setSaving(true);
     try {
-      await db.runAction("update_order_lines", {
+      const result = await db.runAction("update_order_lines", {
         order_id: orderId,
         lines: lines.map(l => ({ id: l.id, qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0) })),
       });
@@ -1679,7 +1679,10 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
       });
       setItems(prev => prev.map(item =>
         item.order.id === orderId
-          ? { ...item, lines: Array.isArray(newLines) ? newLines : item.lines }
+          ? {
+              order: { ...item.order, amount_total: result?.amount_total ?? item.order.amount_total },
+              lines: Array.isArray(newLines) ? newLines : item.lines,
+            }
           : item
       ));
       setEditOrderId(null);
@@ -1960,7 +1963,7 @@ export default function BottomNav({ currentPath, onNavigate, cartCount }: Props)
 '''
 
     vfs["actions/update_order_lines.py"] = r'''def execute(ctx):
-    """修改訂單明細數量。
+    """修改訂單明細數量，並重算 sale_orders.amount_total。
     params: { order_id: str, lines: [{id: str, qty: number}] }
     後端以 admin 身份執行，繞過 ext/proxy 的欄位限制。
     """
@@ -1971,20 +1974,36 @@ export default function BottomNav({ currentPath, onNavigate, cartCount }: Props)
         ctx.response.json({"error": "缺少必要參數"})
         return
 
-    updated = []
-    for item in lines:
-        line_id = item.get("id")
-        qty = item.get("qty")
-        if not line_id or qty is None:
-            continue
+    # 建立 id → qty 對照表
+    qty_map = {item["id"]: item["qty"] for item in lines if item.get("id") is not None}
+
+    for line_id, qty in qty_map.items():
         try:
-            result = ctx.db.update("sale_order_lines", line_id, {"product_uom_qty": qty})
-            updated.append({"id": line_id, "ok": True})
+            ctx.db.update("sale_order_lines", line_id, {"product_uom_qty": qty})
         except Exception as e:
             ctx.response.json({"error": f"更新明細 {line_id} 失敗：{str(e)}"})
             return
 
-    ctx.response.json({"updated": len(updated), "lines": updated})
+    # 重取該訂單所有明細，重算總金額
+    # order_id 欄位可能是 [id, name] 陣列（Many2one）或純字串
+    def _oid(val):
+        if isinstance(val, list): return str(val[0])
+        return str(val) if val is not None else ""
+
+    all_lines = ctx.db.query("sale_order_lines", limit=500)
+    order_lines = [l for l in (all_lines or []) if _oid(l.get("order_id")) == str(order_id)]
+    amount_total = sum(
+        float(l.get("product_uom_qty") or 0) * float(l.get("price_unit") or 0)
+        for l in order_lines
+    )
+
+    try:
+        ctx.db.update("sale_orders", order_id, {"amount_total": round(amount_total, 2)})
+    except Exception as e:
+        ctx.response.json({"error": f"更新訂單金額失敗：{str(e)}"})
+        return
+
+    ctx.response.json({"updated": len(qty_map), "amount_total": round(amount_total, 2)})
 '''
 
     return vfs
