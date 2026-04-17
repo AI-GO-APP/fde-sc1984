@@ -1971,7 +1971,7 @@ export default function BottomNav({ currentPath, onNavigate, cartCount }: Props)
         if not line_id or qty is None:
             continue
         try:
-            result = ctx.db.patch("sale_order_lines", line_id, {"product_uom_qty": qty})
+            result = ctx.db.update("sale_order_lines", line_id, {"product_uom_qty": qty})
             updated.append({"id": line_id, "ok": True})
         except Exception as e:
             ctx.response.json({"error": f"更新明細 {line_id} 失敗：{str(e)}"})
