@@ -1984,26 +1984,12 @@ export default function BottomNav({ currentPath, onNavigate, cartCount }: Props)
             ctx.response.json({"error": f"更新明細 {line_id} 失敗：{str(e)}"})
             return
 
-    # 重取該訂單所有明細，重算總金額
-    # order_id 欄位可能是 [id, name] 陣列（Many2one）或純字串
-    def _oid(val):
-        if isinstance(val, list): return str(val[0])
-        return str(val) if val is not None else ""
+    # 重取該訂單，拿 Odoo 重算後的 amount_total
+    all_orders = ctx.db.query("sale_orders", limit=500)
+    order = next((o for o in (all_orders or []) if str(o.get("id")) == str(order_id)), None)
+    amount_total = float(order.get("amount_total") or 0) if order else None
 
-    all_lines = ctx.db.query("sale_order_lines", limit=500)
-    order_lines = [l for l in (all_lines or []) if _oid(l.get("order_id")) == str(order_id)]
-    amount_total = sum(
-        float(l.get("product_uom_qty") or 0) * float(l.get("price_unit") or 0)
-        for l in order_lines
-    )
-
-    try:
-        ctx.db.update("sale_orders", order_id, {"amount_total": round(amount_total, 2)})
-    except Exception as e:
-        ctx.response.json({"error": f"更新訂單金額失敗：{str(e)}"})
-        return
-
-    ctx.response.json({"updated": len(qty_map), "amount_total": round(amount_total, 2)})
+    ctx.response.json({"updated": len(qty_map), "amount_total": amount_total})
 '''
 
     return vfs
