@@ -645,6 +645,20 @@ export default function ProcurementPage() {
     }));
   };
 
+  // order_id 可能是 [uuid, name] 或純字串
+  const _oid = (val: any): string => Array.isArray(val) ? String(val[0]) : String(val ?? '');
+
+  // 重取指定訂單的所有明細，重算並寫回 amount_total
+  const recalcOrderTotals = async (orderIds: string[]) => {
+    const unique = [...new Set(orderIds)].filter(Boolean);
+    await Promise.all(unique.map(async (oid) => {
+      const lines = await db.query('sale_order_lines', { filters: [{ column: 'order_id', op: 'eq', value: oid }] });
+      const total = (Array.isArray(lines) ? lines : []).reduce((s: number, l: any) =>
+        s + Number(l.product_uom_qty || 0) * Number(l.price_unit || 0), 0);
+      await db.update('sale_orders', oid, { amount_total: Math.round(total * 100) / 100 });
+    }));
+  };
+
   const applyPricing = async (pid: string) => {
     const item = items.find(i => i.productId === pid);
     if (!item || item.purchasePrice <= 0 || item.state !== 'pending') return;
@@ -653,13 +667,15 @@ export default function ProcurementPage() {
       const today = new Date().toISOString().slice(0, 10);
       await db.update('product_templates', pid, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
       // 寫入價格稽核 log
-      await db.insertCustom('x_price_log', { product_id: pid, price: item.sellingPrice, effective_date: today });
+      await db.insertCustom('x_price_log', { product_id: pid, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
       // 同步選定日期配送的訂單明細售價
       const matchingLines = orderLines.filter((l: any) =>
         (l.product_template_id === pid || l.product_id === pid) &&
         typeof l.delivery_date === 'string' && l.delivery_date.slice(0, 10) === selectedDate
       );
       await Promise.all(matchingLines.map((l: any) => db.update('sale_order_lines', l.id, { price_unit: item.sellingPrice })));
+      // 重算受影響訂單的總金額
+      await recalcOrderTotals(matchingLines.map((l: any) => _oid(l.order_id)));
       if (item.actualQty > 0) {
         // 確保有 product_products 變體紀錄（FK 約束）
         let variantId = productProducts.find((v:any) => v.product_tmpl_id === pid)?.id;
@@ -684,17 +700,19 @@ export default function ProcurementPage() {
     if (priceable.length === 0) return;
     setSaving(true);
     const today = new Date().toISOString().slice(0, 10);
+    const allAffectedOrderIds: string[] = [];
     for (const item of priceable) {
       try {
         await db.update('product_templates', item.productId, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
         // 寫入價格稽核 log
-        await db.insert('x_price_log', { product_id: item.productId, price: item.sellingPrice, effective_date: today });
+        await db.insertCustom('x_price_log', { product_id: item.productId, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
         // 同步選定日期配送的訂單明細售價
         const matchingLines = orderLines.filter((l: any) =>
           (l.product_template_id === item.productId || l.product_id === item.productId) &&
           typeof l.delivery_date === 'string' && l.delivery_date.slice(0, 10) === selectedDate
         );
         await Promise.all(matchingLines.map((l: any) => db.update('sale_order_lines', l.id, { price_unit: item.sellingPrice })));
+        allAffectedOrderIds.push(...matchingLines.map((l: any) => _oid(l.order_id)));
         if (item.actualQty > 0) {
           let variantId = productProducts.find((v:any) => v.product_tmpl_id === item.productId)?.id;
           if (!variantId) {
@@ -711,6 +729,8 @@ export default function ProcurementPage() {
         setItems(prev => prev.map(i => i.productId === item.productId ? {...i, state: 'priced'} : i));
       } catch(e) { console.error(e); }
     }
+    // 所有品項更新完後，一次重算所有受影響訂單的總金額
+    await recalcOrderTotals(allAffectedOrderIds);
     setSaving(false);
   };
 
