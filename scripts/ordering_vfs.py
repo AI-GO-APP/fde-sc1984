@@ -1598,10 +1598,13 @@ function parseDeliveryDate(note: string): string {
 function parseNote(note: string): string {
   return (note || "").replace(/配送日期：\d{4}-\d{2}-\d{2}\n?/, "").trim();
 }
-function canEditOrder(order: any, cutoffTime: string): boolean {
+function canEditOrder(order: any, cutoffTime: string, lines: any[]): boolean {
   if (order.state !== "draft") return false;
-  const delivery = parseDeliveryDate(order.note || "");
-  if (!delivery) return false;
+  // 從 note 或 lines[0].delivery_date 取配送日
+  const delivery = parseDeliveryDate(order.note || "")
+    || (lines[0]?.delivery_date ? String(lines[0].delivery_date).slice(0, 10) : "");
+  // 解析不到配送日就直接允許（不因資料缺失而鎖住）
+  if (!delivery) return true;
   const now = new Date();
   const todayYMD = toYMD(now);
   if (cutoffTime) {
@@ -1700,14 +1703,22 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
               ? o.amount_total.toLocaleString("zh-TW", { minimumFractionDigits: 0 })
               : null;
             const isEditing = editOrderId === o.id;
-            const editable = canEditOrder(o, cutoffTime);
+            const editable = canEditOrder(o, cutoffTime, lines);
             return (
               <div key={o.id} className="order-card">
                 <div className="order-top">
                   <span className="order-name">{String(o.name || `訂單 ${String(o.id).slice(0, 8)}`)}</span>
-                  <span className="order-state" style={{ background: STATE_COLORS[s] || "#999" }}>
-                    {STATE_LABELS[s] || s || "—"}
-                  </span>
+                  <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
+                    {editable && !isEditing && (
+                      <button onClick={() => startEdit(o, lines)} title="修改訂單"
+                        style={{ background:"none", border:"none", padding:"2px", cursor:"pointer", color:"#9ca3af", display:"flex", alignItems:"center" }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                    )}
+                    <span className="order-state" style={{ background: STATE_COLORS[s] || "#999" }}>
+                      {STATE_LABELS[s] || s || "—"}
+                    </span>
+                  </div>
                 </div>
                 <div className="order-meta">
                   <span>下單：{o.date_order ? new Date(String(o.date_order)).toLocaleDateString("zh-TW") : "—"}</span>
@@ -1739,12 +1750,6 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
                       ))}
                     </tbody>
                   </table>
-                )}
-                {editable && !isEditing && (
-                  <button
-                    onClick={() => startEdit(o, lines)}
-                    style={{ marginTop: "8px", padding: "6px 16px", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: "6px", fontSize: "13px", cursor: "pointer", color: "#374151", width: "100%" }}
-                  >修改</button>
                 )}
                 {isEditing && (
                   <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
