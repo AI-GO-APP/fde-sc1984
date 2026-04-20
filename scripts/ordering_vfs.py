@@ -1016,6 +1016,12 @@ export async function insert(table: string, data: Record<string, any>): Promise<
   }));
 }
 
+export async function fetchById(table: string, id: string): Promise<any | null> {
+  const resp = await fetch(proxyBase + table + '/' + id, { headers: _h(), credentials: 'include' });
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
 export async function update(table: string, id: string, data: Record<string, any>): Promise<any> {
   return _r(await fetch(proxyBase + table + '/' + id, {
     method: 'PATCH', headers: _h(), credentials: 'include', body: JSON.stringify({ data }),
@@ -1548,17 +1554,12 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
   useEffect(() => {
     const ids = [...new Set(cart.map(i => i.productId))];
     if (ids.length === 0) return;
-    Promise.all(
-      ids.map(id =>
-        db.query("product_templates", { filters: [{ column: "id", op: "eq", value: id }] })
-          .then(r => (Array.isArray(r) && r.length > 0 ? r[0] : null))
-          .catch(() => null)
-      )
-    ).then(results => {
-      const map: Record<string, any> = {};
-      for (const p of results) if (p) map[p.id] = p;
-      setProducts(map);
-    });
+    Promise.all(ids.map(id => db.fetchById("product_templates", id)))
+      .then(results => {
+        const map: Record<string, any> = {};
+        for (const p of results) if (p) map[p.id] = p;
+        setProducts(map);
+      });
   }, [productIdsKey]);
 
   // 依配送日期分組，升冪排序（最早在上）
