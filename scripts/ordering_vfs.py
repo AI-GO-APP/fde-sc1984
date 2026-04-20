@@ -871,7 +871,7 @@ html, :host {
 /* OrdersPage sort FAB */
 .sort-fab {
   position: sticky;
-  top: 56px;
+  top: 0;
   z-index: 20;
   display: flex;
   gap: 8px;
