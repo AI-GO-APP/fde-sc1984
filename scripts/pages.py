@@ -118,7 +118,7 @@ export default function PurchaseListPage() {
   const [priceLogs, setPriceLogs] = useState<any[]>([]);
 
   useEffect(() => {
-    db.queryCustom('x_price_log').then(data => setPriceLogs(Array.isArray(data) ? data : [])).catch(() => {});
+    db.queryCustom(PRICE_LOG_UUID).then(data => setPriceLogs(Array.isArray(data) ? data : [])).catch(() => {});
   }, []);
 
   const priceMap = useMemo(() => {
@@ -579,6 +579,8 @@ import { useNavigate } from 'react-router-dom';
 import * as db from '../../db';
 import { useData } from '../../data/DataProvider';
 import DatePickerWithCounts from '../../components/DatePickerWithCounts';
+
+const PRICE_LOG_UUID = '0838e79c-52bb-4d2a-bac8-92eaef87f691';
 ''' + _ARROW + r'''
 const CheckIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>;
 const PricingIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
@@ -602,7 +604,7 @@ export default function ProcurementPage() {
 
   // 載入 x_price_log（一次性，存 raw records）
   useEffect(() => {
-    db.queryCustom('x_price_log').then(recs => setPriceLogs(Array.isArray(recs) ? recs : [])).catch(() => {});
+    db.queryCustom(PRICE_LOG_UUID).then(recs => setPriceLogs(Array.isArray(recs) ? recs : [])).catch(() => {});
   }, [selectedDate]);
 
   // 依選定配送日重建 PricingItem
@@ -691,7 +693,7 @@ export default function ProcurementPage() {
       const today = new Date().toISOString().slice(0, 10);
       await db.update('product_templates', pid, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
       // 寫入價格稽核 log
-      await db.insertCustom('x_price_log', { tmpl_uuid: pid, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
+      await db.insertCustom(PRICE_LOG_UUID, { tmpl_uuid: pid, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
       // 同步選定日期配送的訂單明細售價
       const matchingLines = orderLines.filter((l: any) =>
         (l.product_template_id === pid || l.product_id === pid) &&
@@ -729,7 +731,7 @@ export default function ProcurementPage() {
       try {
         await db.update('product_templates', item.productId, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
         // 寫入價格稽核 log
-        await db.insertCustom('x_price_log', { tmpl_uuid: item.productId, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
+        await db.insertCustom(PRICE_LOG_UUID, { tmpl_uuid: item.productId, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
         // 同步選定日期配送的訂單明細售價
         const matchingLines = orderLines.filter((l: any) =>
           (l.product_template_id === item.productId || l.product_id === item.productId) &&
