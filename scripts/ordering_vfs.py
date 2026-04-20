@@ -121,16 +121,24 @@ export interface AppUser {
   display_name?: string;
 }
 
-const VALID_PATHS = ["/", "/cart", "/orders"];
-function hashPath(): string {
-  const h = window.location.hash.replace(/^#/, "");
-  return VALID_PATHS.includes(h) ? h : "/";
+const VALID_PATHS = ["/order", "/cart", "/orders"];
+
+// 找出 app 的 base path（去掉尾端的 /order /cart /orders）
+const BASE_PATH = (() => {
+  const p = window.location.pathname;
+  const m = p.match(/^(.*?)\/(order|cart|orders)(\/.*)?$/);
+  return m ? m[1] : p.replace(/\/$/, "");
+})();
+
+function getPath(): string {
+  const rel = window.location.pathname.slice(BASE_PATH.length) || "/order";
+  return VALID_PATHS.includes(rel) ? rel : "/order";
 }
 
 export default function App() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentPath, setCurrentPath] = useState<string>(hashPath);
+  const [currentPath, setCurrentPath] = useState<string>(getPath);
   const [cart, setCart] = useState<CartItem[]>(loadCart);
   const [uomMap, setUomMap] = useState<Record<string, string>>({});
   const [deliveryDate, setDeliveryDate] = useState<string>(getFirstAvailableDate);
@@ -165,15 +173,15 @@ export default function App() {
       }).catch(() => {});
   }, [user]);
 
-  // hash routing：同步 URL hash ↔ state
+  // history routing：pushState + popstate
   const navigate = (path: string) => {
-    window.location.hash = path;
+    history.pushState({}, "", BASE_PATH + path);
     setCurrentPath(path);
   };
   useEffect(() => {
-    const onHash = () => setCurrentPath(hashPath());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    const onPop = () => setCurrentPath(getPath());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   const handleLogin = (u: AppUser) => setUser(u);
@@ -185,7 +193,7 @@ export default function App() {
     setUser(null);
     setCart([]);
     setUomMap({});
-    navigate("/");
+    navigate("/order");
   };
 
   const addToCart = (productId: string, qty: number, delivDate: string) => {
@@ -231,7 +239,7 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
   const pages: Record<string, React.ReactNode> = {
-    "/": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} />,
+    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} />,
     "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} />,
     "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
   };
@@ -242,7 +250,7 @@ export default function App() {
         <h1>雄泉鮮食</h1>
         <button className="logout-btn" onClick={handleLogout}>登出</button>
       </header>
-      <main className="app-page">{pages[currentPath] || pages["/"]}</main>
+      <main className="app-page">{pages[currentPath] || pages["/order"]}</main>
       <BottomNav currentPath={currentPath} onNavigate={navigate} cartCount={cartCount} />
     </div>
   );
@@ -1605,7 +1613,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
     return (
       <div className="empty-cart">
         <p>🛒 購物車是空的</p>
-        <button className="login-btn" onClick={() => onNavigate("/")}>去點餐</button>
+        <button className="login-btn" onClick={() => onNavigate("/order")}>去點餐</button>
       </div>
     );
   }
@@ -1649,13 +1657,22 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
                       <input type="number" step="0.1" className="qty-input" value={item.qty}
                         onChange={e => setCartExact(item.productId, parseFloat(e.target.value), date)} />
                       <button className="qty-btn add" onClick={() => addToCart(item.productId, 1, date)}><Plus size={14} /></button>
+                      <span className="qty-unit">{uomMap[products[item.productId]?.uom_id ?? ""] || "件"}</span>
                       <button className="qty-btn" style={{ border: "1px solid #ef4444", color: "#ef4444" }}
                         onClick={() => setCartExact(item.productId, 0, date)}><Trash2 size={14} /></button>
-                      <span className="qty-unit">{uomMap[products[item.productId]?.uom_id ?? ""] || "件"}</span>
                     </div>
                   </div>
                 );
               })}
+            </div>
+
+            {/* 繼續選購 — 品項最下、小計上 */}
+            <div style={{ padding: "8px 14px 0", background: "#fff" }}>
+              <button
+                onClick={() => { setDeliveryDate(date); onNavigate("/order"); }}
+                style={{ width: "100%", padding: "8px", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "#fff", color: "#6b7280", fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>
+                + 繼續選購
+              </button>
             </div>
 
             {hasPrice && (
@@ -1672,17 +1689,12 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
                 rows={2} />
             </div>
 
-            <div style={{ display: "flex", gap: "8px", padding: "0 14px 14px", borderRadius: "0 0 var(--radius) var(--radius)", background: "#fff" }}>
-              <button className="submit-btn" style={{ flex: 1, borderRadius: "var(--radius)" }}
+            <div style={{ padding: "0 14px 14px", borderRadius: "0 0 var(--radius) var(--radius)", background: "#fff" }}>
+              <button className="submit-btn" style={{ width: "100%", borderRadius: "var(--radius)" }}
                 onClick={() => handleSubmit(date)}
                 disabled={!date || isSubmitting}>
                 <Send size={18} />
                 <span>{isSubmitting ? "送出中..." : `確定送出（${items.length} 項）`}</span>
-              </button>
-              <button
-                onClick={() => { setDeliveryDate(date); onNavigate("/"); }}
-                style={{ flexShrink: 0, padding: "0 14px", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "#fff", color: "#6b7280", fontSize: "13px", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
-                繼續選購
               </button>
             </div>
           </div>
@@ -2068,7 +2080,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
 import { Package, ShoppingCart, ClipboardList } from "lucide-react";
 
 const tabs = [
-  { path: "/", icon: Package, label: "商品" },
+  { path: "/order", icon: Package, label: "商品" },
   { path: "/cart", icon: ShoppingCart, label: "購物車" },
   { path: "/orders", icon: ClipboardList, label: "訂單" },
 ];
