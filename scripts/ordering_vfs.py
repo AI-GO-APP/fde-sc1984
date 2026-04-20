@@ -227,7 +227,7 @@ export default function App() {
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
   }, [cart]);
 
-  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
+  const cartCount = new Set(cart.map(i => i.deliveryDate)).size;
 
   if (loading) return (
     <div className="loading-screen">
@@ -536,6 +536,23 @@ html, :host {
   color: var(--text-muted);
   white-space: nowrap;
 }
+.date-chip-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .date-chip.active {
   background: var(--primary);
   color: #fff;
@@ -1429,12 +1446,19 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
         <div className="date-row">
           <span className="date-label">配送日期</span>
           <div className="date-chips">
-            {availableDates.map(d => (
-              <button key={d} className={`date-chip${deliveryDate === d ? " active" : ""}`}
-                onClick={() => setDeliveryDate(d)}>
-                {fmtDateChip(d)}
-              </button>
-            ))}
+            {availableDates.map(d => {
+              const dateQty = cart.filter(i => i.deliveryDate === d).reduce((s, i) => s + i.qty, 0);
+              return (
+                <button key={d} className={`date-chip${deliveryDate === d ? " active" : ""}`}
+                  onClick={() => setDeliveryDate(d)}
+                  style={{ position: "relative" }}>
+                  {fmtDateChip(d)}
+                  {dateQty > 0 && (
+                    <span className="date-chip-badge">{dateQty % 1 === 0 ? dateQty : dateQty.toFixed(1)}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
