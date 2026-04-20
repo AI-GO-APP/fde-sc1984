@@ -621,7 +621,7 @@ export default function ProcurementPage() {
     for (const rec of priceLogs) {
       const d = rec.data || {};
       if (d.effective_date !== selectedDate) continue;
-      const pid = String(d.product_tmpl_id || d.product_id || '');
+      const pid = String(d.tmpl_uuid || d.product_tmpl_id || d.product_id || '');
       if (!pid) continue;
       // created_at 較新的蓋掉舊的
       if (!logMap[pid] || (rec.created_at || '') > (logMap[pid].created_at || '')) logMap[pid] = rec;
@@ -691,7 +691,7 @@ export default function ProcurementPage() {
       const today = new Date().toISOString().slice(0, 10);
       await db.update('product_templates', pid, { standard_price: item.purchasePrice, list_price: item.sellingPrice });
       // 寫入價格稽核 log
-      await db.insertCustom('x_price_log', { product_tmpl_id: pid, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
+      await db.insertCustom('x_price_log', { tmpl_uuid: pid, price: item.sellingPrice, purchase_price: item.purchasePrice, effective_date: today });
       // 同步選定日期配送的訂單明細售價
       const matchingLines = orderLines.filter((l: any) =>
         (l.product_template_id === pid || l.product_id === pid) &&
@@ -704,7 +704,7 @@ export default function ProcurementPage() {
         // 確保有 product_products 變體紀錄（FK 約束）
         let variantId = productProducts.find((v:any) => v.product_tmpl_id === pid)?.id;
         if (!variantId) {
-          const created = await db.insert('product_products', { product_tmpl_id: pid, active: true });
+          const created = await db.insert('product_products', { tmpl_uuid: pid, active: true });
           if (created?.id) variantId = created.id;
         }
         if (variantId) {
