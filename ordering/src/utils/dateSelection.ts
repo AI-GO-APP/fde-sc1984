@@ -3,6 +3,34 @@
  * 產生明天起 30 天的可選日期（排除假日）
  */
 
+const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1/open/proxy'
+const API_KEY = import.meta.env.VITE_API_KEY || ''
+
+/** 從 x_holiday_settings 取得假日清單，失敗時回傳空陣列 */
+export async function fetchHolidays(token: string | null): Promise<string[]> {
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const res = await fetch(`${API_BASE}/x_holiday_settings/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': API_KEY,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        filters: [{ column: 'date', op: 'ge', value: today }],
+        select_columns: ['date'],
+        limit: 200,
+      }),
+    })
+    if (!res.ok) return []
+    const rows: { date: string }[] = await res.json()
+    return (rows || []).map(r => r.date).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 function toYMD(date: Date): string {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')

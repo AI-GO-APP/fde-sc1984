@@ -8,18 +8,22 @@ import type { Category, Product } from '../data/mockData'
 import SkeletonCard from '../components/SkeletonCard'
 import { useStore } from '../store/useStore'
 import { useAuthStore } from '../store/useAuthStore'
+import { getAvailableOrderDates, formatDateOption, fetchHolidays } from '../utils/dateSelection'
 
 export default function OrderPage() {
   const navigate = useNavigate()
   const { cart, addToCart, removeFromCart, updateCartQty, loadProducts, liveProducts, liveCategories, productsLoading } = useStore()
-  const { logout } = useAuthStore()
+  const { logout, token } = useAuthStore()
   const [activeCat, setActiveCat] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
-  // 使用全域 store 的 LIVE 資料
+  // 配送日期
+  const [selectedDeliveryDate, setSelectedDeliveryDate] = useState('')
+  const [availableDates, setAvailableDates] = useState<string[]>([])
+  const [datesLoading, setDatesLoading] = useState(true)
+
   const categories: Category[] = liveCategories
   const products: Product[] = liveProducts
-  const isLive = true
 
   useEffect(() => {
     loadProducts().catch(() => setError('無法連線 API，使用離線資料'))
@@ -31,6 +35,15 @@ export default function OrderPage() {
     }
   }, [categories, activeCat])
 
+  useEffect(() => {
+    setDatesLoading(true)
+    fetchHolidays(token).then(holidays => {
+      const dates = getAvailableOrderDates(new Date(), holidays)
+      setAvailableDates(dates)
+      if (dates.length > 0 && !selectedDeliveryDate) setSelectedDeliveryDate(dates[0])
+    }).finally(() => setDatesLoading(false))
+  }, [token])
+
   const filteredProducts = products.filter(p => p.categoryId === activeCat)
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0)
 
@@ -39,7 +52,7 @@ export default function OrderPage() {
       <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-bold text-gray-900">雄泉鮮食</h1>
-          {isLive && <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] rounded font-bold">LIVE</span>}
+          <span className="px-1.5 py-0.5 bg-green-100 text-green-700 text-[10px] rounded font-bold">LIVE</span>
           {productsLoading && <span className="text-xs text-gray-400 animate-pulse">載入中...</span>}
         </div>
         <div className="flex items-center gap-3">
@@ -58,6 +71,24 @@ export default function OrderPage() {
         </div>
       </header>
 
+      {/* 配送日期選擇 */}
+      <div className="sticky top-[57px] z-10 bg-white border-b border-gray-100 px-4 py-2 flex items-center gap-2">
+        <span className="text-xs text-gray-500 shrink-0">📅 配送日：</span>
+        {datesLoading ? (
+          <span className="text-xs text-gray-400">載入中...</span>
+        ) : availableDates.length === 0 ? (
+          <span className="text-xs text-red-400">無可選日期</span>
+        ) : (
+          <select
+            value={selectedDeliveryDate}
+            onChange={e => setSelectedDeliveryDate(e.target.value)}
+            className="text-xs text-gray-700 font-medium bg-transparent border-none focus:outline-none cursor-pointer"
+          >
+            {availableDates.map(d => <option key={d} value={d}>{formatDateOption(d)}</option>)}
+          </select>
+        )}
+      </div>
+
       {error && (
         <div className="mx-4 mt-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700">
           ⚠️ {error}
@@ -65,7 +96,7 @@ export default function OrderPage() {
       )}
 
       {/* Category tabs */}
-      <div className="sticky top-[57px] z-10 bg-white border-b border-gray-100">
+      <div className="sticky top-[93px] z-10 bg-white border-b border-gray-100">
         <div className="flex overflow-x-auto scrollbar-hide px-4 py-2 gap-2">
           {categories.map(cat => (
             <button
@@ -89,38 +120,38 @@ export default function OrderPage() {
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           filteredProducts.map(product => {
-            const inCart = cart.find(i => i.productId === product.id)
-          return (
-            <div key={product.id} className="bg-white rounded-xl border border-gray-100 p-3 space-y-2">
-              <div>
-                <p className="font-medium text-sm text-gray-900 leading-tight">{product.name}</p>
-                <p className="text-xs text-gray-400">{product.unit}</p>
-              </div>
-              {inCart ? (
+            const inCart = cart.find(i => i.productId === product.id && i.deliveryDate === selectedDeliveryDate)
+            const qty = inCart?.qty ?? 0
+            return (
+              <div key={product.id} className="bg-white rounded-xl border border-gray-100 p-3 space-y-2">
+                <div>
+                  <p className="font-medium text-sm text-gray-900 leading-tight">{product.name}</p>
+                  <p className="text-xs text-gray-400">{product.unit}</p>
+                </div>
                 <div className="flex items-center justify-between">
-                  <button onClick={() => removeFromCart(product.id)}
-                    className="w-7 h-7 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-200 font-bold text-lg">−</button>
-                  <input type="number" step="0.1" min="0"
+                  <button
+                    onClick={() => removeFromCart(product.id, selectedDeliveryDate)}
+                    disabled={qty === 0}
+                    className="w-7 h-7 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-200 font-bold text-lg disabled:opacity-30 disabled:cursor-not-allowed"
+                  >−</button>
+                  <input
+                    type="number" step="0.1" min="0"
                     className="w-12 text-center font-bold text-primary bg-transparent border-b border-gray-200 focus:outline-none focus:border-primary p-0"
-                    value={inCart.qty}
+                    value={qty}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value)
-                      if (!isNaN(val)) updateCartQty(product.id, val)
+                      if (!isNaN(val)) updateCartQty(product.id, selectedDeliveryDate, val)
                     }}
                   />
                   <span className="text-xs text-gray-400 ml-0.5">{product.unit || '單位'}</span>
-                  <button onClick={() => addToCart(product.id)}
-                    className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center text-white hover:bg-green-700 font-bold text-lg">+</button>
+                  <button
+                    onClick={() => addToCart(product.id, selectedDeliveryDate)}
+                    className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center text-white hover:bg-green-700 font-bold text-lg"
+                  >+</button>
                 </div>
-              ) : (
-                <button onClick={() => addToCart(product.id)}
-                  className="w-full py-1.5 bg-gray-50 text-gray-600 rounded-lg text-sm font-medium hover:bg-primary hover:text-white transition-colors">
-                  + 加入
-                </button>
-              )}
-            </div>
-          )
-        })
+              </div>
+            )
+          })
         )}
         {filteredProducts.length === 0 && !productsLoading && (
           <div className="col-span-2 py-12 text-center text-gray-400">

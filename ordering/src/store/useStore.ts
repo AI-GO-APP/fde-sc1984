@@ -28,6 +28,7 @@ import {
 
 export interface CartItem {
   productId: string
+  deliveryDate: string
   qty: number
   note: string
 }
@@ -84,10 +85,11 @@ interface AppState {
 
   // 購物車
   cart: CartItem[]
-  addToCart: (productId: string) => void
-  removeFromCart: (productId: string) => void
-  updateCartQty: (productId: string, qty: number) => void
-  updateCartNote: (productId: string, note: string) => void
+  addToCart: (productId: string, deliveryDate?: string) => void
+  removeFromCart: (productId: string, deliveryDate?: string) => void
+  updateCartQty: (productId: string, deliveryDate: string, qty: number) => void
+  updateCartNote: (productId: string, deliveryDate: string, note: string) => void
+  updateCartDate: (productId: string, oldDate: string, newDate: string) => void
   clearCart: () => void
 
   // 訂單（API）— 延遲載入
@@ -95,6 +97,7 @@ interface AppState {
   ordersLoading: boolean
   loadOrders: (offset?: number) => Promise<void>
   submitOrderAsync: (note: string, onProgress?: (step: string) => void, deliveryDate?: string) => Promise<string>
+  submitOrderForDate: (date: string, note: string, onProgress?: (step: string) => void) => Promise<string>
   submitError: string | null
 }
 
@@ -142,25 +145,30 @@ export const useStore = create<AppState>((set, get) => ({
 
   // === 購物車 ===
   cart: [],
-  addToCart: (productId) => set((s) => {
-    const existing = s.cart.find(i => i.productId === productId)
+  addToCart: (productId, deliveryDate = '') => set((s) => {
+    const existing = s.cart.find(i => i.productId === productId && i.deliveryDate === deliveryDate)
     if (existing) {
-      return { cart: s.cart.map(i => i.productId === productId ? { ...i, qty: Math.round((i.qty + 0.5) * 100) / 100 } : i) }
+      return { cart: s.cart.map(i => i.productId === productId && i.deliveryDate === deliveryDate ? { ...i, qty: Math.round((i.qty + 0.5) * 100) / 100 } : i) }
     }
-    return { cart: [...s.cart, { productId, qty: 1, note: '' }] }
+    return { cart: [...s.cart, { productId, deliveryDate, qty: 1, note: '' }] }
   }),
-  removeFromCart: (productId) => set((s) => {
-    const existing = s.cart.find(i => i.productId === productId)
+  removeFromCart: (productId, deliveryDate = '') => set((s) => {
+    const existing = s.cart.find(i => i.productId === productId && i.deliveryDate === deliveryDate)
     if (existing && existing.qty > 0.5) {
-      return { cart: s.cart.map(i => i.productId === productId ? { ...i, qty: Math.round((i.qty - 0.5) * 100) / 100 } : i) }
+      return { cart: s.cart.map(i => i.productId === productId && i.deliveryDate === deliveryDate ? { ...i, qty: Math.round((i.qty - 0.5) * 100) / 100 } : i) }
     }
-    return { cart: s.cart.filter(i => i.productId !== productId) }
+    return { cart: s.cart.filter(i => !(i.productId === productId && i.deliveryDate === deliveryDate)) }
   }),
-  updateCartQty: (productId, qty) => set((s) => ({
-    cart: qty <= 0 ? s.cart.filter(i => i.productId !== productId) : s.cart.map(i => i.productId === productId ? { ...i, qty } : i)
+  updateCartQty: (productId, deliveryDate, qty) => set((s) => ({
+    cart: qty <= 0
+      ? s.cart.filter(i => !(i.productId === productId && i.deliveryDate === deliveryDate))
+      : s.cart.map(i => i.productId === productId && i.deliveryDate === deliveryDate ? { ...i, qty } : i)
   })),
-  updateCartNote: (productId, note) => set((s) => ({
-    cart: s.cart.map(i => i.productId === productId ? { ...i, note } : i)
+  updateCartNote: (productId, deliveryDate, note) => set((s) => ({
+    cart: s.cart.map(i => i.productId === productId && i.deliveryDate === deliveryDate ? { ...i, note } : i)
+  })),
+  updateCartDate: (productId, oldDate, newDate) => set((s) => ({
+    cart: s.cart.map(i => i.productId === productId && i.deliveryDate === oldDate ? { ...i, deliveryDate: newDate } : i)
   })),
   clearCart: () => set({ cart: [] }),
 
@@ -202,6 +210,46 @@ export const useStore = create<AppState>((set, get) => ({
     } finally {
       if (offset === 0) hideLoading()
       set({ ordersLoading: false })
+    }
+  },
+
+  submitOrderForDate: async (date, note, onProgress) => {
+    const { cart, liveProducts } = get()
+    const itemsForDate = cart.filter(i => i.deliveryDate === date)
+    if (itemsForDate.length === 0) throw new Error('此日期無商品')
+
+    set({ submitError: null })
+    try {
+      onProgress?.('建立訂單中...')
+      const customerId = useAuthStore.getState().customerId
+      const orderNote = `配送日期：${date}${note ? '\n' + note : ''}`
+
+      const lines = itemsForDate.map(item => {
+        const product = liveProducts.find(p => p.id === item.productId)
+        return {
+          product_template_id: item.productId,
+          name: product ? `${product.name}${item.note ? ` (${item.note})` : ''}` : item.productId,
+          product_uom_qty: item.qty,
+          delivery_date: date,
+        }
+      })
+
+      const result = await createOrderViaBackend({
+        customer_id: customerId || undefined,
+        date_order: new Date().toISOString().slice(0, 10),
+        note: orderNote,
+        lines,
+      })
+
+      onProgress?.('完成！')
+      set(s => ({ cart: s.cart.filter(i => i.deliveryDate !== date) }))
+      get().loadOrders()
+
+      return result.order_id
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '下單失敗'
+      set({ submitError: msg })
+      throw err
     }
   },
 
