@@ -69,28 +69,28 @@ def ensure_references(h: dict, app_id: str):
         print(f"  [{tn}] {s2}")
 
 
-PRICE_LOG_UUID = "0838e79c-52bb-4d2a-bac8-92eaef87f691"
+PRICE_LOG_UUID = "390d4f0b-9a2b-4131-a35b-67fce21286be"
 
 
 def fetch_price_data(h: dict) -> dict:
-    """從 x_price_log 拉最新一筆價格（per product_id），回傳 {product_id: {price, effective_date}}"""
+    """從 x_product_product_price_log 拉最新一筆價格（per product_product_id），回傳 {product_id: {price, effective_date}}"""
     status, body = _req("GET", f"{API_BASE}/data/objects/{PRICE_LOG_UUID}/records", h, timeout=30)
     if status != 200:
-        print(f"  ⚠️ 拉取 x_price_log 失敗：{status}，前端將無參考價")
+        print(f"  ⚠️ 拉取 x_product_product_price_log 失敗：{status}，前端將無參考價")
         return {}
     records = body if isinstance(body, list) else []
-    # 每筆格式: { id, data: { product_id, price, effective_date, ... }, created_at }
+    # 每筆格式: { id, data: { product_product_id, lst_price, standard_price, effective_date }, created_at }
     latest: dict = {}
     for rec in records:
         d = rec.get("data") or {}
-        pid = str(d.get("tmpl_uuid") or d.get("product_tmpl_id") or d.get("product_id") or "").strip()
+        pid = str(d.get("product_product_id") or "").strip()
         eff = str(d.get("effective_date", "")).strip()
-        price = d.get("price")
+        price = d.get("lst_price")
         if not pid or not eff or price is None:
             continue
         if pid not in latest or eff > latest[pid]["effective_date"]:
             latest[pid] = {"price": price, "effective_date": eff}
-    print(f"  x_price_log：{len(records)} 筆記錄，{len(latest)} 個商品有效價格")
+    print(f"  x_product_product_price_log：{len(records)} 筆記錄，{len(latest)} 個商品有效價格")
     return latest
 
 
