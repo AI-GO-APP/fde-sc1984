@@ -1,6 +1,8 @@
 import { db } from './client'
 import { TABLES } from './tables'
 
+const PRICE_LOG_UUID = '390d4f0b-9a2b-4131-a35b-67fce21286be'
+
 interface PriceLogEntry {
   productProductId: string
   standardPrice: number
@@ -49,22 +51,20 @@ export async function syncOrderLinePrices(
 }
 
 async function writePriceLog(entry: PriceLogEntry): Promise<void> {
-  await db.insert(TABLES.PRODUCT_PRODUCT_PRICE_LOG, {
+  await db.insertCustom(PRICE_LOG_UUID, {
     product_product_id: entry.productProductId,
     standard_price: entry.standardPrice,
     lst_price: entry.lstPrice,
     updated_by: entry.updatedBy,
     effective_date: entry.effectiveDate,
-    updated_at: new Date().toISOString(),
   })
 }
 
 export async function getPriceLog(productProductId: string): Promise<PriceLogRecord[]> {
   try {
-    const rows = await db.query<any>(TABLES.PRODUCT_PRODUCT_PRICE_LOG, {
-      filters: [{ column: 'product_product_id', op: 'eq', value: productProductId }],
-    })
+    const rows = await db.queryCustom<any>(PRICE_LOG_UUID)
     return (rows || [])
+      .filter((r: any) => String(r.product_product_id) === productProductId)
       .map((r: any) => ({
         id: String(r.id),
         productProductId: String(r.product_product_id),

@@ -62,10 +62,18 @@ def proxy_post(h, app_id, table, data):
     return status, body
 
 
+def custom_table_post(h, uuid, data):
+    status, body = _req("POST", f"{API_BASE}/data/objects/{uuid}/records", h, {"data": data})
+    return status, body
+
+
 def resolve_id(val):
     if isinstance(val, list):
         return str(val[0])
     return str(val) if val else ""
+
+
+PRICE_LOG_UUID = "390d4f0b-9a2b-4131-a35b-67fce21286be"
 
 
 def main():
@@ -129,7 +137,7 @@ def main():
             print(f"   [dry] {tmpl_id} → pp={pp_id} lst_price={new_price} date={effective_date}")
             ok += 1
         else:
-            status, body = proxy_post(h, app_id, "x_product_product_price_log", new_rec)
+            status, body = custom_table_post(h, PRICE_LOG_UUID, new_rec)
             if status in (200, 201):
                 ok += 1
             else:

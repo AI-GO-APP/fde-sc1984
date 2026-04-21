@@ -5,11 +5,15 @@ const mockDb = {
   insert: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
+  insertCustom: vi.fn(),
+  queryCustom: vi.fn(),
 }
 vi.mock('../client', () => ({ db: mockDb }))
 
 const { updateProductPrices, syncOrderLinePrices, getPriceLog, updateProductPricesWithLog } =
   await import('../priceAuditLog')
+
+const PRICE_LOG_UUID = '390d4f0b-9a2b-4131-a35b-67fce21286be'
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -79,14 +83,14 @@ describe('updateProductPricesWithLog', () => {
     mockDb.query.mockResolvedValueOnce([
       { id: 'line-1', delivery_date: '2026-04-02' },
     ])
-    mockDb.insert.mockResolvedValue({ id: 'plog-1' })
+    mockDb.insertCustom.mockResolvedValue({ id: 'plog-1' })
 
     const result = await updateProductPricesWithLog('pp-1', 80, 120, 'admin', '2026-04-02')
 
     expect(mockDb.update).toHaveBeenCalledWith('product_products', 'pp-1', { standard_price: 80, lst_price: 120 })
     expect(mockDb.update).toHaveBeenCalledWith('sale_order_lines', 'line-1', { price_unit: 120 })
-    expect(mockDb.insert).toHaveBeenCalledWith(
-      'x_product_product_price_log',
+    expect(mockDb.insertCustom).toHaveBeenCalledWith(
+      PRICE_LOG_UUID,
       expect.objectContaining({
         product_product_id: 'pp-1',
         standard_price: 80,
@@ -102,7 +106,7 @@ describe('updateProductPricesWithLog', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mockDb.update.mockResolvedValue({})
     mockDb.query.mockResolvedValueOnce([{ id: 'line-1', delivery_date: '2026-04-02' }])
-    mockDb.insert.mockRejectedValueOnce(new Error('log failed'))
+    mockDb.insertCustom.mockRejectedValueOnce(new Error('log failed'))
 
     const result = await updateProductPricesWithLog('pp-1', 80, 120, 'admin', '2026-04-02')
 
@@ -116,31 +120,26 @@ describe('updateProductPricesWithLog', () => {
 })
 
 describe('getPriceLog', () => {
-  it('查詢時帶入正確的 product_product_id filter', async () => {
-    mockDb.query.mockResolvedValue([])
+  it('查詢時帶入正確的 UUID 並以 product_product_id 過濾', async () => {
+    mockDb.queryCustom.mockResolvedValue([])
     await getPriceLog('pp-1')
-    expect(mockDb.query).toHaveBeenCalledWith(
-      'x_product_product_price_log',
-      expect.objectContaining({
-        filters: expect.arrayContaining([
-          expect.objectContaining({ column: 'product_product_id', op: 'eq', value: 'pp-1' }),
-        ]),
-      }),
-    )
+    expect(mockDb.queryCustom).toHaveBeenCalledWith(PRICE_LOG_UUID)
   })
 
   it('回傳依 updated_at 降冪排列', async () => {
-    mockDb.query.mockResolvedValue([
+    mockDb.queryCustom.mockResolvedValue([
       { id: 'plog-1', product_product_id: 'pp-1', standard_price: 80, lst_price: 100, updated_by: 'admin', effective_date: '2026-04-01', updated_at: '2026-04-01T10:00:00' },
       { id: 'plog-2', product_product_id: 'pp-1', standard_price: 90, lst_price: 120, updated_by: 'admin', effective_date: '2026-04-02', updated_at: '2026-04-02T10:00:00' },
+      { id: 'plog-3', product_product_id: 'pp-2', standard_price: 50, lst_price: 70, updated_by: 'admin', effective_date: '2026-04-01', updated_at: '2026-04-01T09:00:00' },
     ])
     const result = await getPriceLog('pp-1')
+    expect(result).toHaveLength(2)
     expect(result[0].id).toBe('plog-2')
     expect(result[1].id).toBe('plog-1')
   })
 
   it('API 失敗時回傳空陣列', async () => {
-    mockDb.query.mockRejectedValue(new Error('fail'))
+    mockDb.queryCustom.mockRejectedValue(new Error('fail'))
     expect(await getPriceLog('pp-1')).toEqual([])
   })
 })

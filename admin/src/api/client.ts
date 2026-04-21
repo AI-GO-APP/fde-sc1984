@@ -122,7 +122,20 @@ export const db = {
 
   async delete(table: string, id: string | number): Promise<void> {
     await apiClient.delete(`/open/proxy/${table}/${id}`)
-  }
+  },
+
+  async insertCustom<T = any>(tableUuid: string, data: Record<string, any>): Promise<T> {
+    const res = await apiClient.post(`/data/objects/${tableUuid}/records`, { data })
+    return res.data
+  },
+
+  async queryCustom<T = any>(tableUuid: string): Promise<T[]> {
+    const res = await apiClient.get(`/data/objects/${tableUuid}/records`)
+    const rows: any[] = Array.isArray(res.data) ? res.data : []
+    return rows.map((r: any) =>
+      r.data ? { ...r.data, id: r.id, updated_at: r.data.updated_at || r.updated_at } : r
+    ) as T[]
+  },
 };
 
 export default apiClient;
