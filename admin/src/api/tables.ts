@@ -4,6 +4,7 @@ export const TABLES = {
   ORDER_AUDIT_LOG: 'x_order_audit_log',
   PRODUCT_PRODUCT_PRICE_LOG: 'x_product_product_price_log',
   DRIVER_CUSTOMER: 'x_driver_customer',
+  CATEGORY_BUYER: 'x_category_buyer',
   SUPPLIER_INFO: 'product_supplierinfo',
   SALE_ORDERS: 'sale_orders',
   SALE_ORDER_LINES: 'sale_order_lines',

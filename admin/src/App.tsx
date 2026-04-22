@@ -18,6 +18,9 @@ const OrderEditPage = lazy(() => import('./pages/OrderEditPage'))
 const DriverMappingPage = lazy(() => import('./pages/DriverMappingPage'))
 const PricePage = lazy(() => import('./pages/PricePage'))
 const PurchaseListPage = lazy(() => import('./pages/PurchaseListPage'))
+const ProductsPage = lazy(() => import('./pages/ProductsPage'))
+const ProductCategoriesPage = lazy(() => import('./pages/ProductCategoriesPage'))
+const CategoryBuyerPage = lazy(() => import('./pages/CategoryBuyerPage'))
 
 function LoadingFallback() {
   return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">載入中...</div>
@@ -53,6 +56,9 @@ export default function App() {
           <Route path="/driver-mapping" element={<AuthGuard><DriverMappingPage /></AuthGuard>} />
           <Route path="/price" element={<AuthGuard><PricePage /></AuthGuard>} />
           <Route path="/purchase-list" element={<AuthGuard><PurchaseListPage /></AuthGuard>} />
+          <Route path="/products" element={<AuthGuard><ProductsPage /></AuthGuard>} />
+          <Route path="/product-categories" element={<AuthGuard><ProductCategoriesPage /></AuthGuard>} />
+          <Route path="/category-buyer" element={<AuthGuard><CategoryBuyerPage /></AuthGuard>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

@@ -218,11 +218,32 @@ actions/
 | `x_holiday_settings` | date, reason | 假日清單，deploy 時靜態 embed |
 | `x_app_settings` | key, value, updated_at | 應用設定 |
 | `x_order_audit_log` | — | 訂單稽核記錄 |
-| `x_driver_customer` | — | 司機負責客戶對應 |
+| `x_driver_customer` | driver_id, customer_id, created_by, created_at | 司機負責客戶對應 |
+| `x_category_buyer` | category_id, employee_id, created_by, created_at | 產品分類負責採購的員工（買辦人）對應 |
 
 > **欄位設計原則**：custom table 欄位名稱對齊 `product_products` 的欄位名稱（`standard_price`、`lst_price`），以保持一致性。
 
 > **資料搬遷**：舊 `x_price_audit_log` 的資料可透過 `scripts/migrate_price_log.py` 搬遷至 `x_product_product_price_log`（`new_price → lst_price`，`standard_price` 補 0）。
+
+---
+
+## Admin App 功能說明
+
+### 首頁 Tab 結構
+
+Admin Dashboard (`/`) 切分兩個頁籤：
+
+**每日流程**（每日例行操作）
+1. 確認訂單（`/orders`）
+2. 採購管理（`/purchase`）
+3. 出庫分配（`/allocation`）
+4. 出貨配送（`/delivery`）
+- 訂購清單（`/purchase-list`）、品項價格（`/price`）
+
+**基礎設定**（不常變動的主資料與對應關係）
+- 商品設定：產品管理（`/products`）、產品分類管理（`/product-categories`）、分類-買辦人對應（`/category-buyer`）
+- 關係對應：供應商-產品對應（`/supplier-mapping`）、司機-客戶對應（`/driver-mapping`）
+- 系統：系統設定（`/settings`，含假日與截止時間）
 
 ---
 

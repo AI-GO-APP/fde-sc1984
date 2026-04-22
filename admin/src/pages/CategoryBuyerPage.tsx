@@ -1,97 +1,89 @@
 /**
- * 司機-客戶關係管理 — 以下拉選單選司機 / 客戶，按司機分組顯示
+ * 分類-買辦人對應管理 — 決定每個產品分類由哪位員工負責採購
  */
 import { useState, useEffect, useMemo } from 'react'
 import PageHeader from '../components/PageHeader'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useUIStore } from '../store/useUIStore'
 import {
-  getDriverCustomerMappings,
-  addDriverCustomerMapping,
-  deleteDriverCustomerMapping,
-} from '../api/driverCustomer'
+  listCategoryBuyerMappings,
+  addCategoryBuyerMapping,
+  deleteCategoryBuyerMapping,
+  type CategoryBuyerMapping,
+} from '../api/categoryBuyer'
+import { listProductCategories, type ProductCategory } from '../api/productCategories'
+import { getCachedDrivers } from '../api/refCache'
 import { getAdminUser } from '../api/auth'
-import { getCachedCustomerMap, getCachedDrivers } from '../api/refCache'
 
-interface DriverCustomerMapping {
-  id: string
-  driverId: string
-  customerId: string
-}
+interface Employee { id: string; name: string }
 
-interface Option { id: string; name: string }
-
-export default function DriverMappingPage() {
+export default function CategoryBuyerPage() {
   const { withLoading, toast } = useUIStore()
-  const [mappings, setMappings] = useState<DriverCustomerMapping[]>([])
-  const [drivers, setDrivers] = useState<Option[]>([])
-  const [customers, setCustomers] = useState<Option[]>([])
+  const [mappings, setMappings] = useState<CategoryBuyerMapping[]>([])
+  const [categories, setCategories] = useState<ProductCategory[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
   const [showForm, setShowForm] = useState(false)
-  const [driverId, setDriverId] = useState('')
-  const [customerId, setCustomerId] = useState('')
-
-  const currentUser = getAdminUser()?.name || '未知使用者'
+  const [categoryId, setCategoryId] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
+  const currentUser = getAdminUser()?.name || '未知使用者'
+
   const load = async () => {
-    const [maps, drvs, custMap] = await Promise.all([
-      getDriverCustomerMappings(),
+    const [maps, cats, emps] = await Promise.all([
+      listCategoryBuyerMappings(),
+      listProductCategories(),
       getCachedDrivers(),
-      getCachedCustomerMap(),
     ])
     setMappings(maps)
-    setDrivers(drvs.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')))
-    setCustomers(
-      Object.entries(custMap)
-        .map(([id, name]) => ({ id, name: name || `#${id}` }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'))
-    )
+    setCategories(cats)
+    setEmployees(emps)
   }
 
   useEffect(() => {
     withLoading(load, '載入中...').catch(() => toast('error', '載入失敗'))
   }, [])
 
-  const driverName = (id: string) => drivers.find(d => d.id === id)?.name || `#${id}`
-  const customerName = (id: string) => customers.find(c => c.id === id)?.name || `#${id}`
+  const categoryName = (id: string) => categories.find(c => c.id === id)?.name || id
+  const employeeName = (id: string) => employees.find(e => e.id === id)?.name || id
 
   const handleAdd = async () => {
-    if (!driverId || !customerId) {
-      toast('error', '請選擇司機和客戶')
+    if (!categoryId || !employeeId) {
+      toast('error', '請選擇分類與買辦人')
       return
     }
     await withLoading(async () => {
-      await addDriverCustomerMapping(driverId, customerId, currentUser)
-      setDriverId('')
-      setCustomerId('')
+      await addCategoryBuyerMapping(categoryId, employeeId, currentUser)
+      setCategoryId('')
+      setEmployeeId('')
       setShowForm(false)
       await load()
-    }, '新增中...', '新增成功')
+    }, '新增中...', '對應已新增')
   }
 
   const handleDelete = async (id: string) => {
     await withLoading(async () => {
-      await deleteDriverCustomerMapping(id)
+      await deleteCategoryBuyerMapping(id)
       await load()
     }, '刪除中...', '已刪除')
     setDeleteTargetId(null)
   }
 
   const grouped = useMemo(() => {
-    const map = new Map<string, DriverCustomerMapping[]>()
+    const map = new Map<string, CategoryBuyerMapping[]>()
     mappings.forEach(m => {
-      const list = map.get(m.driverId) || []
+      const list = map.get(m.employeeId) || []
       list.push(m)
-      map.set(m.driverId, list)
+      map.set(m.employeeId, list)
     })
     return Array.from(map.entries()).sort(([a], [b]) =>
-      driverName(a).localeCompare(driverName(b), 'zh-Hant')
+      employeeName(a).localeCompare(employeeName(b), 'zh-Hant')
     )
-  }, [mappings, drivers])
+  }, [mappings, employees])
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <PageHeader title="司機-客戶對應" showBack>
+      <PageHeader title="分類-買辦人對應" showBack>
         <div className="pt-2">
           <button
             onClick={() => setShowForm(v => !v)}
@@ -104,26 +96,26 @@ export default function DriverMappingPage() {
       <div className="p-6 max-w-[1200px] mx-auto w-full space-y-4">
         {showForm && (
           <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
-            <p className="font-medium text-gray-700">新增司機-客戶對應</p>
+            <p className="font-medium text-gray-700">新增對應</p>
             <div className="flex gap-3 flex-wrap">
               <select
-                value={driverId}
-                onChange={e => setDriverId(e.target.value)}
+                value={categoryId}
+                onChange={e => setCategoryId(e.target.value)}
                 className="border border-gray-200 rounded px-3 py-1.5 text-sm bg-white flex-1 min-w-48"
               >
-                <option value="">選擇司機...</option>
-                {drivers.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                <option value="">選擇分類...</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
               <select
-                value={customerId}
-                onChange={e => setCustomerId(e.target.value)}
+                value={employeeId}
+                onChange={e => setEmployeeId(e.target.value)}
                 className="border border-gray-200 rounded px-3 py-1.5 text-sm bg-white flex-1 min-w-48"
               >
-                <option value="">選擇客戶...</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                <option value="">選擇買辦人（員工）...</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name}</option>
                 ))}
               </select>
               <button
@@ -142,20 +134,20 @@ export default function DriverMappingPage() {
 
         {mappings.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 text-center text-gray-400 py-12">
-            尚無司機-客戶對應資料
+            尚無分類-買辦人對應資料
           </div>
         ) : (
           <div className="space-y-4">
-            {grouped.map(([dId, items]) => (
-              <section key={dId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            {grouped.map(([empId, items]) => (
+              <section key={empId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                 <header className="bg-gray-50 px-4 py-2.5 border-b border-gray-100">
-                  <p className="font-semibold text-gray-800">{driverName(dId)}</p>
-                  <p className="text-xs text-gray-400">負責 {items.length} 位客戶</p>
+                  <p className="font-semibold text-gray-800">{employeeName(empId)}</p>
+                  <p className="text-xs text-gray-400">負責 {items.length} 個分類</p>
                 </header>
                 <ul className="divide-y divide-gray-50">
                   {items.map(m => (
                     <li key={m.id} className="flex items-center justify-between px-4 py-2.5">
-                      <span className="text-sm text-gray-800">{customerName(m.customerId)}</span>
+                      <span className="text-sm text-gray-800">{categoryName(m.categoryId)}</span>
                       <button
                         onClick={() => setDeleteTargetId(m.id)}
                         className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded">
@@ -173,7 +165,7 @@ export default function DriverMappingPage() {
       <ConfirmDialog
         open={!!deleteTargetId}
         title="確認刪除？"
-        message="此司機-客戶對應將被永久刪除。"
+        message="此分類-買辦人對應將被永久刪除。"
         confirmText="刪除"
         variant="danger"
         onConfirm={() => deleteTargetId && handleDelete(deleteTargetId)}

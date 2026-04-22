@@ -2,7 +2,14 @@
 
 ## 待執行
 
-- [ ] 2026-04-07 Admin VFS — 移植新功能頁面至 VFS 注入腳本（SettingsPage、PricePage、OrderEditPage、SupplierMappingPage、DriverMappingPage 各頁面的 VFS 版本，補入 scripts/v7_pages.py）
+- [ ] 2026-04-22 Admin 首頁切 Tab — DashboardPage 切「每日流程 / 基礎設定」兩個頁籤
+      每日流程：4 步驟卡片（確認訂單→採購→分配→配送）＋ 訂購清單 ＋ 品項價格
+      基礎設定：系統設定（假日/截止時間）、產品管理、產品分類管理、分類-買辦人對應、供應商-產品對應、司機-客戶對應
+- [ ] 2026-04-22 新增 ProductsPage（產品管理）— 列出 product_templates，可改 categ_id（改 API：admin/src/api/productTemplates.ts）
+- [ ] 2026-04-22 新增 ProductCategoriesPage — product_categories CRUD（API：admin/src/api/productCategories.ts）
+- [ ] 2026-04-22 新增 CategoryBuyerPage — 分類↔買辦人（員工）對應，需新 custom table x_category_buyer（category_id, employee_id）
+- [ ] 2026-04-22 整修 DriverMappingPage — 以 hr_employees / customers 下拉選單取代 text input，並按司機分組顯示客戶
+- [ ] 2026-04-07 Admin VFS — 移植新功能頁面至 VFS 注入腳本（SettingsPage、PricePage、OrderEditPage、SupplierMappingPage、DriverMappingPage、ProductsPage、ProductCategoriesPage、CategoryBuyerPage 各頁面的 VFS 版本，補入 scripts/v7_pages.py）
 - [ ] 2026-04-07 GitHub Secrets — 在 repo 設定 AIGO_EMAIL、AIGO_PASSWORD、ADMIN_APP_ID、ORDERING_APP_ID 四個 secrets（舊 VM/Docker secrets 可移除）
 
 - [ ] 2026-04-02 需求 9：後台頁面設定司機與客戶的關聯（資料表 + API + UI）
