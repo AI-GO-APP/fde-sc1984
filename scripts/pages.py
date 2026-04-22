@@ -3,7 +3,7 @@
 _ARROW = '''const Arrow = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>;'''
 
 def dashboard() -> str:
-    return r'''import { useNavigate, useSearchParams } from 'react-router-dom';
+    return r'''import { useNavigate, useLocation } from 'react-router-dom';
 import { useData } from '../../data/DataProvider';
 import DatePickerWithCounts from '../../components/DatePickerWithCounts';
 const LeafIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.9C15.5 4.9 17 3.5 19 1a13 13 0 0 1 .8 13c-1 1.8-2 3.1-3.8 4.5"/><path d="M5 20c.5-1 1.4-3 2-4.5"/></svg>;
@@ -13,9 +13,9 @@ type TabKey = 'daily' | 'settings';
 export default function DashboardPage() {
   const nav = useNavigate();
   const { orders, orderLines, loading, selectedDate, setSelectedDate } = useData();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tab: TabKey = searchParams.get('tab') === 'settings' ? 'settings' : 'daily';
-  const setTab = (t: TabKey) => { if (t === 'daily') setSearchParams({}); else setSearchParams({tab: t}); };
+  const loc = useLocation();
+  const tab: TabKey = loc.pathname.startsWith('/admin/settings') ? 'settings' : 'daily';
+  const setTab = (t: TabKey) => { nav(t === 'daily' ? '/admin/daily' : '/admin/settings'); };
   const isDraft = (o:any) => !o.state || o.state === 'draft';
   const isConfirmed = (o:any) => o.state === 'sale' || o.state === 'confirm';
   const dateIds = new Set(orderLines.filter((l:any) => String(l.delivery_date||'').slice(0,10) === selectedDate).map((l:any) => { const v = l.order_id; return Array.isArray(v) ? String(v[0]) : String(v||''); }));
@@ -23,24 +23,24 @@ export default function DashboardPage() {
   const cs = () => orders.filter(o => isConfirmed(o) && dateIds.has(String(o.id))).length;
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400">載入中...</p></div>;
   const steps = [
-    {step:'1',label:'訂單接收',desc:`${cd()} 筆待處理`,href:'/admin/purchase-list',count:cd()},
-    {step:'2',label:'採購定價',desc:'管理採購',href:'/admin/procurement',count:0},
-    {step:'3',label:'庫存總表',desc:'查看庫存',href:'/admin/stock',count:0},
-    {step:'4',label:'銷貨單',desc:`${cs()} 筆已確認`,href:'/admin/sales-orders',count:cs()},
-    {step:'5',label:'配送管理',desc:'出貨追蹤',href:'/admin/delivery',count:0},
+    {step:'1',label:'訂單接收',desc:`${cd()} 筆待處理`,href:'/admin/daily/purchase-list',count:cd()},
+    {step:'2',label:'採購定價',desc:'管理採購',href:'/admin/daily/procurement',count:0},
+    {step:'3',label:'庫存總表',desc:'查看庫存',href:'/admin/daily/stock',count:0},
+    {step:'4',label:'銷貨單',desc:`${cs()} 筆已確認`,href:'/admin/daily/sales-orders',count:cs()},
+    {step:'5',label:'配送管理',desc:'出貨追蹤',href:'/admin/daily/delivery',count:0},
   ];
   const settingsGroups: {title:string; items:{label:string;desc:string;href:string;disabled?:boolean}[]}[] = [
     {title:'商品設定', items:[
-      {label:'產品管理', desc:'編輯產品分類', href:'/admin/products'},
-      {label:'產品分類管理', desc:'新增/修改分類', href:'/admin/product-categories'},
-      {label:'分類-買辦人對應', desc:'每個分類由誰買', href:'/admin/category-buyer'},
+      {label:'產品管理', desc:'編輯產品分類', href:'/admin/settings/products'},
+      {label:'產品分類管理', desc:'新增/修改分類', href:'/admin/settings/product-categories'},
+      {label:'分類-買辦人對應', desc:'每個分類由誰買', href:'/admin/settings/category-buyer'},
     ]},
     {title:'關係對應', items:[
-      {label:'供應商-產品對應', desc:'品項誰家供', href:'/admin/supplier-mapping'},
-      {label:'司機-客戶對應', desc:'誰送哪些客戶', href:'/admin/driver-mapping'},
+      {label:'供應商-產品對應', desc:'品項誰家供', href:'/admin/settings/supplier-mapping'},
+      {label:'司機-客戶對應', desc:'誰送哪些客戶', href:'/admin/settings/driver-mapping'},
     ]},
     {title:'系統', items:[
-      {label:'系統設定', desc:'假日、截止時間', href:'/admin/settings'},
+      {label:'系統設定', desc:'假日、截止時間', href:'/admin/settings/system'},
     ]},
   ];
   return (
@@ -264,7 +264,7 @@ export default function PurchaseListPage() {
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:'#f9fafb'}}>
       <header style={{flexShrink:0}} className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
+          <button onClick={()=>nav('/admin/daily')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
           <div>
             <h1 className="text-xl font-bold text-gray-900">訂單接收</h1>
             <p className="text-sm text-gray-400">{draftOrders.length} 筆訂單 · 合計 ${grandTotal.toLocaleString()}</p>
@@ -389,7 +389,7 @@ export default function StockPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"><Arrow/></button>
+          <button onClick={()=>nav('/admin/daily')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"><Arrow/></button>
           <div><h1 className="text-xl font-bold text-gray-900">庫存總表</h1><p className="text-sm text-gray-400">{products.length} 個商品</p></div>
         </div>
         <DatePickerWithCounts value={selectedDate} onChange={setSelectedDate} />
@@ -506,7 +506,7 @@ export default function DeliveryPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
+          <button onClick={()=>nav('/admin/daily')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
           <div>
             <h1 className="text-xl font-bold text-gray-900">配送管理</h1>
             <p className="text-sm text-gray-400">{filteredOrders.length} 筆訂單{driverFilter!=='all'?` · ${driverFilter==='unassigned'?'未指派':empMap[driverFilter]?.name||driverFilter}`:''}</p>
@@ -863,7 +863,7 @@ export default function ProcurementPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
+          <button onClick={()=>nav('/admin/daily')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
           <div>
             <h1 className="text-xl font-bold text-gray-900">採購定價</h1>
             <p className="text-sm text-gray-400">{items.length} 品項 · {pendingCount} 待定價 · {pricedCount} 已定價</p>
@@ -887,7 +887,7 @@ export default function ProcurementPage() {
             <PackageIcon />
             <p className="text-gray-500 font-medium">尚無採購品項</p>
             <p className="text-sm text-gray-400">訂單明細將在此彙總顯示</p>
-            <button onClick={()=>nav('/admin/purchase-list')} className="text-primary hover:underline text-sm mt-2">先去查看訂單接收 →</button>
+            <button onClick={()=>nav('/admin/daily/purchase-list')} className="text-primary hover:underline text-sm mt-2">先去查看訂單接收 →</button>
           </div>
         ) : (
           <div className="space-y-4">
@@ -1153,7 +1153,7 @@ export default function SalesOrdersPage() {
     <div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden',background:'#f9fafb'}}>
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center" style={{flexShrink:0}}>
         <div className="flex items-center gap-3">
-          <button onClick={()=>nav('/')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
+          <button onClick={()=>nav('/admin/daily')} className="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg bg-transparent hover:bg-gray-100 transition-colors border-none"><Arrow/></button>
           <div><h1 className="text-xl font-bold text-gray-900">銷貨單管理</h1><p className="text-sm text-gray-400">{orders.length} 筆訂單</p></div>
         </div>
         <div className="flex items-center gap-2">
@@ -1300,7 +1300,7 @@ export default function ProductsPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-3 max-w-6xl mx-auto">
-          <button onClick={()=>nav('/admin')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+          <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
           <h1 className="text-xl font-bold text-gray-900">產品管理</h1>
         </div>
       </header>
@@ -1403,7 +1403,7 @@ export default function ProductCategoriesPage() {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-5xl mx-auto">
           <div className="flex items-center gap-3">
-            <button onClick={()=>nav('/admin')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+            <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
             <h1 className="text-xl font-bold text-gray-900">產品分類管理</h1>
           </div>
           <button onClick={()=>setShowForm(v=>!v)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ 新增分類</button>
@@ -1534,7 +1534,7 @@ export default function CategoryBuyerPage() {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-5xl mx-auto">
           <div className="flex items-center gap-3">
-            <button onClick={()=>nav('/admin')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+            <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
             <h1 className="text-xl font-bold text-gray-900">分類-買辦人對應</h1>
           </div>
           <button onClick={()=>setShowForm(v=>!v)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ 新增對應</button>
@@ -1680,7 +1680,7 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-3 max-w-2xl mx-auto">
-          <button onClick={()=>nav('/admin')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+          <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
           <h1 className="text-xl font-bold text-gray-900">系統設定</h1>
         </div>
       </header>
@@ -1784,7 +1784,7 @@ export default function SupplierMappingPage() {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-5xl mx-auto">
           <div className="flex items-center gap-3">
-            <button onClick={()=>nav('/admin')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+            <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
             <h1 className="text-xl font-bold text-gray-900">供應商-產品對應</h1>
           </div>
           <button onClick={()=>setShowForm(v=>!v)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ 新增對應</button>
@@ -1897,7 +1897,7 @@ export default function DriverMappingPage() {
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-5xl mx-auto">
           <div className="flex items-center gap-3">
-            <button onClick={()=>nav('/admin')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+            <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
             <h1 className="text-xl font-bold text-gray-900">司機-客戶對應</h1>
           </div>
           <button onClick={()=>setShowForm(v=>!v)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">+ 新增對應</button>

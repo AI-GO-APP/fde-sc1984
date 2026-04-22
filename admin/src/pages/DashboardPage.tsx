@@ -1,7 +1,7 @@
 /**
  * Dashboard — 兩個頁籤：每日流程、基礎設定
  */
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAdminStore } from '../store/useAdminStore'
 import PageHeader from '../components/PageHeader'
 
@@ -9,13 +9,10 @@ type TabKey = 'daily' | 'settings'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { saleOrders, purchaseOrders } = useAdminStore()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tab: TabKey = searchParams.get('tab') === 'settings' ? 'settings' : 'daily'
-  const setTab = (t: TabKey) => {
-    if (t === 'daily') setSearchParams({})
-    else setSearchParams({ tab: t })
-  }
+  const tab: TabKey = location.pathname.startsWith('/settings') ? 'settings' : 'daily'
+  const setTab = (t: TabKey) => navigate(t === 'daily' ? '/daily' : '/settings')
 
   const step1Count = saleOrders.filter(o => o.state === 'draft').length
   const step2Count = purchaseOrders
@@ -25,15 +22,15 @@ export default function DashboardPage() {
   const step4Count = saleOrders.filter(o => o.state === 'sale' && o.allocated).length
 
   const steps = [
-    { step: '1', label: '確認訂單', desc: '審核新訂單', href: '/orders', count: step1Count, color: 'bg-blue-500' },
-    { step: '2', label: '採購管理', desc: '待採購品項', href: '/purchase', count: step2Count, color: 'bg-orange-500' },
-    { step: '3', label: '出庫分配', desc: '分配出貨量', href: '/allocation', count: step3Count, color: 'bg-purple-500' },
-    { step: '4', label: '出貨配送', desc: '配送給客戶', href: '/delivery', count: step4Count, color: 'bg-green-600' },
+    { step: '1', label: '確認訂單', desc: '審核新訂單', href: '/daily/orders', count: step1Count, color: 'bg-blue-500' },
+    { step: '2', label: '採購管理', desc: '待採購品項', href: '/daily/purchase', count: step2Count, color: 'bg-orange-500' },
+    { step: '3', label: '出庫分配', desc: '分配出貨量', href: '/daily/allocation', count: step3Count, color: 'bg-purple-500' },
+    { step: '4', label: '出貨配送', desc: '配送給客戶', href: '/daily/delivery', count: step4Count, color: 'bg-green-600' },
   ]
 
   const dailyShortcuts = [
-    { label: '訂購清單', desc: '彙總所有品項', href: '/purchase-list' },
-    { label: '品項價格', desc: '當日實價更新', href: '/price' },
+    { label: '訂購清單', desc: '彙總所有品項', href: '/daily/purchase-list' },
+    { label: '品項價格', desc: '當日實價更新', href: '/daily/price' },
   ]
 
   const settingsGroups: {
@@ -43,22 +40,22 @@ export default function DashboardPage() {
     {
       title: '商品設定',
       items: [
-        { label: '產品管理', desc: '編輯產品分類', href: '/products' },
-        { label: '產品分類管理', desc: '新增/修改分類', href: '/product-categories' },
-        { label: '分類-買辦人對應', desc: '每個分類由誰買', href: '/category-buyer' },
+        { label: '產品管理', desc: '編輯產品分類', href: '/settings/products' },
+        { label: '產品分類管理', desc: '新增/修改分類', href: '/settings/product-categories' },
+        { label: '分類-買辦人對應', desc: '每個分類由誰買', href: '/settings/category-buyer' },
       ],
     },
     {
       title: '關係對應',
       items: [
-        { label: '供應商-產品對應', desc: '品項誰家供', href: '/supplier-mapping' },
-        { label: '司機-客戶對應', desc: '誰送哪些客戶', href: '/driver-mapping' },
+        { label: '供應商-產品對應', desc: '品項誰家供', href: '/settings/supplier-mapping' },
+        { label: '司機-客戶對應', desc: '誰送哪些客戶', href: '/settings/driver-mapping' },
       ],
     },
     {
       title: '系統',
       items: [
-        { label: '系統設定', desc: '假日、截止時間', href: '/settings' },
+        { label: '系統設定', desc: '假日、截止時間', href: '/settings/system' },
       ],
     },
   ]

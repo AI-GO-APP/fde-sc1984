@@ -45,21 +45,23 @@ export default function App() {
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/" element={<AuthGuard><DashboardPage /></AuthGuard>} />
-          <Route path="/orders" element={<AuthGuard><OrdersPage /></AuthGuard>} />
-          <Route path="/purchase" element={<AuthGuard><PurchasePage /></AuthGuard>} />
-          <Route path="/allocation" element={<AuthGuard><AllocationPage /></AuthGuard>} />
-          <Route path="/delivery" element={<AuthGuard><DeliveryPage /></AuthGuard>} />
-          <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
-          <Route path="/supplier-mapping" element={<AuthGuard><SupplierMappingPage /></AuthGuard>} />
-          <Route path="/order/:orderId/edit" element={<AuthGuard><OrderEditPage /></AuthGuard>} />
-          <Route path="/driver-mapping" element={<AuthGuard><DriverMappingPage /></AuthGuard>} />
-          <Route path="/price" element={<AuthGuard><PricePage /></AuthGuard>} />
-          <Route path="/purchase-list" element={<AuthGuard><PurchaseListPage /></AuthGuard>} />
-          <Route path="/products" element={<AuthGuard><ProductsPage /></AuthGuard>} />
-          <Route path="/product-categories" element={<AuthGuard><ProductCategoriesPage /></AuthGuard>} />
-          <Route path="/category-buyer" element={<AuthGuard><CategoryBuyerPage /></AuthGuard>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<Navigate to="/daily" replace />} />
+          <Route path="/daily" element={<AuthGuard><DashboardPage /></AuthGuard>} />
+          <Route path="/daily/orders" element={<AuthGuard><OrdersPage /></AuthGuard>} />
+          <Route path="/daily/purchase" element={<AuthGuard><PurchasePage /></AuthGuard>} />
+          <Route path="/daily/allocation" element={<AuthGuard><AllocationPage /></AuthGuard>} />
+          <Route path="/daily/delivery" element={<AuthGuard><DeliveryPage /></AuthGuard>} />
+          <Route path="/daily/purchase-list" element={<AuthGuard><PurchaseListPage /></AuthGuard>} />
+          <Route path="/daily/price" element={<AuthGuard><PricePage /></AuthGuard>} />
+          <Route path="/daily/order/:orderId/edit" element={<AuthGuard><OrderEditPage /></AuthGuard>} />
+          <Route path="/settings" element={<AuthGuard><DashboardPage /></AuthGuard>} />
+          <Route path="/settings/products" element={<AuthGuard><ProductsPage /></AuthGuard>} />
+          <Route path="/settings/product-categories" element={<AuthGuard><ProductCategoriesPage /></AuthGuard>} />
+          <Route path="/settings/category-buyer" element={<AuthGuard><CategoryBuyerPage /></AuthGuard>} />
+          <Route path="/settings/supplier-mapping" element={<AuthGuard><SupplierMappingPage /></AuthGuard>} />
+          <Route path="/settings/driver-mapping" element={<AuthGuard><DriverMappingPage /></AuthGuard>} />
+          <Route path="/settings/system" element={<AuthGuard><SettingsPage /></AuthGuard>} />
+          <Route path="*" element={<Navigate to="/daily" replace />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
