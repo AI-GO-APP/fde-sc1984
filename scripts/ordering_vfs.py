@@ -174,7 +174,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const today = new Date().toISOString().slice(0, 10);
-    db.query("x_holiday_settings", { filters: [{ column: "date", op: "ge", value: today }] })
+    db.query("x_holiday_settings", { filters: [{ column: "date", op: "gte", value: today }] })
       .then(res => {
         const rows = Array.isArray(res) ? res : [];
         const s = new Set<string>(
