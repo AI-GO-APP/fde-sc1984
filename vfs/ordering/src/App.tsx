@@ -34,8 +34,8 @@ function loadUser(): AppUser | null {
 }
 
 export interface CartItem {
-  productId: string;         // product_template.id
-  productProductId?: string; // product_product.id（用於 priceMap 查詢）
+  productId: string;
+  productProductId?: string;
   deliveryDate: string;
   qty: number;
   name?: string;
@@ -47,7 +47,6 @@ function loadCart(): CartItem[] {
   try {
     const raw = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
     if (Array.isArray(raw)) return raw as CartItem[];
-    // 從舊格式 Record<string,number> 遷移
     return Object.entries(raw as Record<string, number>)
       .filter(([, q]) => q > 0)
       .map(([productId, qty]) => ({ productId, deliveryDate: "", qty }));
@@ -59,6 +58,8 @@ export interface AppUser {
   email: string;
   display_name?: string;
 }
+
+export interface PriceEntry { price: number; date: string; }
 
 const VALID_PATHS = ["/order", "/cart", "/orders"];
 
@@ -73,8 +74,11 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(getPath);
   const [cart, setCart] = useState<CartItem[]>(loadCart);
   const [uomMap, setUomMap] = useState<Record<string, string>>({});
+  const [holidays, setHolidays] = useState<Set<string>>(new Set());
   const [deliveryDate, setDeliveryDate] = useState<string>(() => getFirstAvailableDate(new Set()));
   const [tmplToProd, setTmplToProd] = useState<Record<string, string>>({});
+  const [priceMap, setPriceMap] = useState<Record<string, PriceEntry>>({});
+  const [cutoffTime, setCutoffTime] = useState<string>("");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -94,28 +98,50 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  // 登入後載入計量單位對照表
+  // 登入後載入所有 runtime 資料
   useEffect(() => {
     if (!user) return;
+
+    // 計量單位（標準 Odoo 表，直接查）
     db.query("uom_uom", { filters: [{ column: "active", op: "eq", value: true }] })
-      .then(res => {
+      .then(rows => {
         const map: Record<string, string> = {};
-        for (const u of Array.isArray(res) ? res : []) map[String(u.id)] = u.name;
+        for (const u of Array.isArray(rows) ? rows : []) map[String(u.id)] = u.name;
         setUomMap(map);
       }).catch(() => {});
-    db.query("product_product", { filters: [{ column: "active", op: "eq", value: true }] })
-      .then((rows: any[]) => {
-        const map: Record<string, string> = {};
-        for (const r of rows) {
-          const raw = r.product_tmpl_id;
-          const tmplId = String(Array.isArray(raw) ? raw[0] : (raw ?? ""));
-          if (tmplId && r.id) map[tmplId] = String(r.id);
+
+    // x_ 自訂表 + product_product 對應 → 統一由 get_config action 取得
+    db.runAction("get_config", {})
+      .then((d: any) => {
+        // 假日
+        const dates = (Array.isArray(d.holidays) ? d.holidays : []).filter(Boolean);
+        const hset = new Set<string>(dates);
+        setHolidays(hset);
+        setDeliveryDate(prev => hset.has(prev) ? getFirstAvailableDate(hset) : prev);
+
+        // 截止時間
+        if (d.cutoff_time) setCutoffTime(String(d.cutoff_time));
+
+        // product_product 對應
+        setTmplToProd(d.tmpl_to_prod ?? {});
+
+        // 參考價：price_log + prod_to_tmpl → 每個 tmplId 取最新
+        const prodToTmpl: Record<string, string> = d.prod_to_tmpl ?? {};
+        const latest: Record<string, PriceEntry> = {};
+        for (const log of Array.isArray(d.price_log) ? d.price_log : []) {
+          const prodId = String(log.product_product_id || "");
+          const tmplId = prodToTmpl[prodId];
+          if (!tmplId) continue;
+          const date = String(log.effective_date || "");
+          const price = Number(log.lst_price || 0);
+          if (!latest[tmplId] || date > latest[tmplId].date) {
+            latest[tmplId] = { price, date };
+          }
         }
-        setTmplToProd(map);
+        setPriceMap(latest);
       }).catch(() => {});
   }, [user]);
 
-  // hash routing：同步 URL hash ↔ state
   const navigate = (path: string) => {
     window.location.hash = path;
     setCurrentPath(path);
@@ -135,6 +161,8 @@ export default function App() {
     setUser(null);
     setCart([]);
     setUomMap({});
+    setHolidays(new Set());
+    setPriceMap({});
     navigate("/order");
   };
 
@@ -162,9 +190,7 @@ export default function App() {
   };
 
   const clearCartDate = (date: string) => setCart(prev => prev.filter(i => i.deliveryDate !== date));
-  const clearCart = () => setCart([]);
 
-  // cart 變更時同步存 localStorage
   useEffect(() => {
     localStorage.setItem(CART_KEY, JSON.stringify(cart));
   }, [cart]);
@@ -181,9 +207,21 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
   const pages: Record<string, React.ReactNode> = {
-    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={new Set()} tmplToProd={tmplToProd} />,
-    "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} />,
-    "/orders": <OrdersPage user={user!} cutoffTime="" />,
+    "/order": (
+      <CatalogPage
+        cart={cart} addToCart={addToCart} setCartExact={setCartExact}
+        uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate}
+        holidays={holidays} tmplToProd={tmplToProd} priceMap={priceMap}
+      />
+    ),
+    "/cart": (
+      <CartPage
+        cart={cart} addToCart={addToCart} setCartExact={setCartExact}
+        clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate}
+        uomMap={uomMap} user={user} priceMap={priceMap}
+      />
+    ),
+    "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
   };
 
   return (
