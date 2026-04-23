@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { refreshToken, clearAdminToken } from './auth';
 
 const AIGO_API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
 
@@ -17,6 +18,31 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// 單一刷新 Promise，避免並發 401 觸發多次 refresh
+let refreshingPromise: Promise<string> | null = null;
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config;
+    if (error.response?.status === 401 && !original._refreshRetry) {
+      original._refreshRetry = true;
+      try {
+        if (!refreshingPromise) {
+          refreshingPromise = refreshToken().finally(() => { refreshingPromise = null; });
+        }
+        await refreshingPromise;
+        // request interceptor 會自動帶上新 token
+        return apiClient(original);
+      } catch {
+        clearAdminToken();
+        window.location.href = '/';
+      }
+    }
+    return Promise.reject(error);
+  },
+);
 
 // AI GO Custom App Table API helpers
 // 使用 /open/proxy 端點（API Key 認證），與 ordering client 一致

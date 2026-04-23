@@ -77,6 +77,7 @@ export interface RawSaleOrderLine {
 }
 
 import { useAuthStore } from '../store/useAuthStore'
+import { refreshAccessToken } from './auth'
 
 /** 通用 proxy fetch — 支援所有 HTTP methods */
 async function fetchProxy<T>(
@@ -84,6 +85,7 @@ async function fetchProxy<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
   body?: Record<string, unknown>,
   retries = 2,
+  skipRefresh = false,
 ): Promise<T> {
   const url = `${API_BASE}/${endpoint}`
   const token = useAuthStore.getState().token
@@ -98,25 +100,55 @@ async function fetchProxy<T>(
   if (body && method !== 'GET') {
     options.body = JSON.stringify(body)
   }
-  
+
+  let res: Response
   try {
-    const res = await fetch(url, options)
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`API error ${res.status}: ${text}`)
-    }
-    // DELETE 可能不回傳 body
-    if (res.status === 204 || res.headers.get('content-length') === '0') {
-      return undefined as T
-    }
-    return res.json()
+    res = await fetch(url, options)
   } catch (err) {
     if (retries > 0) {
       await new Promise(r => setTimeout(r, 1000))
-      return fetchProxy(endpoint, method, body, retries - 1)
+      return fetchProxy(endpoint, method, body, retries - 1, skipRefresh)
     }
     throw err
   }
+
+  if (res.status === 401 && !skipRefresh) {
+    const { refreshToken } = useAuthStore.getState()
+    if (refreshToken) {
+      try {
+        const newAuth = await refreshAccessToken(refreshToken)
+        useAuthStore.getState().setAuth(
+          newAuth.access_token,
+          newAuth.refresh_token,
+          newAuth.user,
+          newAuth.expires_in,
+          newAuth.customer_id,
+        )
+        return fetchProxy(endpoint, method, body, 0, true)
+      } catch {
+        useAuthStore.getState().logout()
+        throw new Error('登入已過期，請重新登入')
+      }
+    }
+    useAuthStore.getState().logout()
+    throw new Error('登入已過期，請重新登入')
+  }
+
+  if (!res.ok) {
+    const text = await res.text()
+    const err = new Error(`API error ${res.status}: ${text}`)
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 1000))
+      return fetchProxy(endpoint, method, body, retries - 1, skipRefresh)
+    }
+    throw err
+  }
+
+  // DELETE 可能不回傳 body
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T
+  }
+  return res.json()
 }
 
 // --- 優化後的產品/分類查詢 ---

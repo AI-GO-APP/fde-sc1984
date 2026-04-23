@@ -59,3 +59,7 @@ export async function register(email: string, password: string, displayName: str
 export async function login(email: string, password: string): Promise<AuthResponse> {
   return authFetch('login', { email, password })
 }
+
+export async function refreshAccessToken(refreshToken: string): Promise<AuthResponse> {
+  return authFetch('refresh', { refresh_token: refreshToken })
+}
