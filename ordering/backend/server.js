@@ -410,13 +410,9 @@ app.post('/order/create', async (req, res) => {
       if (!lineRes.ok) failures.push(line.product_template_id)
     }
 
-    // 3. 若有明細失敗，嘗試取消訂單（best-effort rollback）
+    // 3. 若有明細失敗回錯誤（AI GO proxy 不支援直接改 state，不嘗試 rollback）
     if (failures.length > 0) {
-      await fetch(`${proxyBase}/sale_orders/${orderId}`, {
-        method: 'PATCH', headers,
-        body: JSON.stringify({ state: 'cancel' }),
-      }).catch(() => {})
-      return res.status(500).json({ error: 'LINE_CREATE_FAILED', message: `${failures.length} 筆明細建立失敗，訂單已取消` })
+      return res.status(500).json({ error: 'LINE_CREATE_FAILED', message: `${failures.length} 筆明細建立失敗` })
     }
 
     res.json({ order_id: orderId })
