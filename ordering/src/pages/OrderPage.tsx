@@ -8,7 +8,7 @@ import type { Category, Product } from '../data/mockData'
 import SkeletonCard from '../components/SkeletonCard'
 import { useStore } from '../store/useStore'
 import { useAuthStore } from '../store/useAuthStore'
-import { getAvailableOrderDates, formatDateOption, fetchHolidays } from '../utils/dateSelection'
+import { getAvailableOrderDates, formatDateOption, fetchHolidays, fetchCutoffTime, isCutoffPassed } from '../utils/dateSelection'
 import { fetchPricesForDate } from '../api/client'
 
 export default function OrderPage() {
@@ -41,10 +41,11 @@ export default function OrderPage() {
 
   useEffect(() => {
     setDatesLoading(true)
-    fetchHolidays(token).then(holidays => {
-      const dates = getAvailableOrderDates(new Date(), holidays)
+    Promise.all([fetchHolidays(token), fetchCutoffTime(token)]).then(([holidays, cutoff]) => {
+      const passed = isCutoffPassed(cutoff)
+      const dates = getAvailableOrderDates(new Date(), holidays, passed)
       setAvailableDates(dates)
-      if (dates.length > 0 && !selectedDeliveryDate) setSelectedDeliveryDate(dates[0])
+      setSelectedDeliveryDate(prev => (dates.includes(prev) ? prev : dates[0] ?? ''))
     }).finally(() => setDatesLoading(false))
   }, [token])
 

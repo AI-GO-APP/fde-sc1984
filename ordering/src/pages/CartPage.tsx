@@ -1,6 +1,10 @@
 /**
  * C3 購物車 / 下單確認頁
- * 購物車按配送日期分組，每個日期有獨立的送出按鈕
+ * - 截止時間前：可正常提交所有日期的訂單
+ * - 截止時間後：
+ *   - 今日（最近可選日）的項目反灰置底，不可修改也不可提交
+ *   - 反灰組排序：配送日期越晚越靠上
+ *   - 可提交組排序：日期升冪
  */
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -8,7 +12,7 @@ import { useStore } from '../store/useStore'
 import { useAuthStore } from '../store/useAuthStore'
 import { useUIStore } from '../store/useUIStore'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { formatDateOption } from '../utils/dateSelection'
+import { formatDateOption, fetchCutoffTime, isCutoffPassed, computeMinDeliveryDate } from '../utils/dateSelection'
 
 const ORDER_VALIDATE_URL = '/order/validate'
 
@@ -18,32 +22,53 @@ export default function CartPage() {
   const { logout, token } = useAuthStore()
   const { showLoading, hideLoading, toast } = useUIStore()
 
-  // 每個日期組的備註
   const [groupNotes, setGroupNotes] = useState<Record<string, string>>({})
-  // 正在確認送出的日期（null = 未開啟）
   const [confirmingDate, setConfirmingDate] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  // 已送出成功的日期
   const [submittedDates, setSubmittedDates] = useState<string[]>([])
+
+  // 截止時間狀態
+  const [minDeliveryDate, setMinDeliveryDate] = useState<string>('')
+
+  useEffect(() => {
+    fetchCutoffTime(token).then(cutoff => {
+      const passed = isCutoffPassed(cutoff)
+      setMinDeliveryDate(computeMinDeliveryDate(passed))
+    })
+  }, [token])
 
   const getProduct = (productId: string) =>
     liveProducts.find(p => p.id === productId)
 
-  // 依配送日期分組，各組按日期升冪排序
-  const dateGroups: { date: string; items: typeof cart }[] = (() => {
+  // 依配送日期分組，計算是否被截止鎖定
+  const dateGroups: { date: string; items: typeof cart; locked: boolean }[] = (() => {
     const groups: Record<string, typeof cart> = {}
     for (const item of cart) {
       const key = item.deliveryDate || ''
       if (!groups[key]) groups[key] = []
       groups[key].push(item)
     }
-    return Object.entries(groups)
-      .sort(([a], [b]) => {
-        if (!a) return 1
-        if (!b) return -1
-        return a.localeCompare(b)
+
+    const allGroups = Object.entries(groups).map(([date, items]) => ({
+      date,
+      items,
+      // 有日期且早於最小可下單日，視為截止鎖定
+      locked: !!date && !!minDeliveryDate && date < minDeliveryDate,
+    }))
+
+    const active = allGroups
+      .filter(g => !g.locked)
+      .sort((a, b) => {
+        if (!a.date) return 1
+        if (!b.date) return -1
+        return a.date.localeCompare(b.date) // 升冪（最近日期優先）
       })
-      .map(([date, items]) => ({ date, items }))
+
+    const locked = allGroups
+      .filter(g => g.locked)
+      .sort((a, b) => b.date.localeCompare(a.date)) // 降冪（越晚越上）
+
+    return [...active, ...locked]
   })()
 
   const handleSubmit = async (date: string) => {
@@ -51,7 +76,6 @@ export default function CartPage() {
     showLoading('驗證訂單中...')
     setErrors(prev => ({ ...prev, [date]: '' }))
     try {
-      // 驗證日期
       try {
         const validateRes = await fetch(ORDER_VALIDATE_URL, {
           method: 'POST',
@@ -97,7 +121,6 @@ export default function CartPage() {
     }
   }
 
-  // 全部已送出
   if (cart.length === 0 && submittedDates.length > 0) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -142,22 +165,62 @@ export default function CartPage() {
       </header>
 
       <div className="px-4 py-4 space-y-4">
-        {dateGroups.map(({ date, items }) => {
+        {dateGroups.map(({ date, items, locked }) => {
           const dateLabel = date ? formatDateOption(date) : '⚠️ 未指定配送日期'
           const groupNote = groupNotes[date] || ''
           const groupErr = errors[date]
           const alreadySubmitted = submittedDates.includes(date)
 
+          if (locked) {
+            // ── 截止鎖定組：反灰置底，不可互動 ──
+            return (
+              <div key={date} className="rounded-2xl border border-gray-200 overflow-hidden opacity-50">
+                <div className="bg-gray-100 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+                  <span className="font-bold text-gray-500 text-sm">🔒 {dateLabel}</span>
+                  <span className="text-xs text-gray-400">{items.length} 項・截止已過</span>
+                </div>
+
+                <div className="bg-white space-y-0 divide-y divide-gray-50">
+                  {items.map(({ productId, qty, note, deliveryDate }) => {
+                    const product = getProduct(productId)
+                    return (
+                      <div key={productId} className="p-4 space-y-2">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-medium text-gray-500">{product?.name || productId}</span>
+                            <span className="text-sm text-gray-400 ml-2">{product?.unit || ''}</span>
+                          </div>
+                          <button onClick={() => removeFromCart(productId, deliveryDate)} className="text-gray-300 hover:text-red-400 text-xs">✕</button>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <label className="text-sm text-gray-400 w-10">數量</label>
+                          <input type="number" value={qty} disabled
+                            className="w-24 text-center px-2 py-1 border border-gray-100 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed" />
+                          <span className="text-sm text-gray-400">{product?.unit || '單位'}</span>
+                        </div>
+                        <input value={note} disabled placeholder="—"
+                          className="w-full text-sm px-3 py-2 border border-gray-100 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed" />
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="bg-gray-50 border-t border-gray-100 px-4 py-3">
+                  <p className="text-xs text-gray-400">此日期的截止時間已過，無法提交訂單</p>
+                </div>
+              </div>
+            )
+          }
+
+          // ── 正常組 ──
           return (
             <div key={date} className={`rounded-2xl border overflow-hidden ${alreadySubmitted ? 'opacity-50' : 'border-gray-100'}`}>
-              {/* 日期標頭 */}
               <div className="bg-green-50 border-b border-green-100 px-4 py-3 flex items-center justify-between">
                 <span className="font-bold text-green-800 text-sm">📅 {dateLabel}</span>
                 {alreadySubmitted && <span className="text-xs text-green-600 font-medium">✅ 已送出</span>}
                 <span className="text-xs text-gray-500">{items.length} 項</span>
               </div>
 
-              {/* 品項列表 */}
               <div className="bg-white space-y-0 divide-y divide-gray-50">
                 {items.map(({ productId, qty, note, deliveryDate }) => {
                   const product = getProduct(productId)
@@ -188,7 +251,6 @@ export default function CartPage() {
                 })}
               </div>
 
-              {/* 訂單備註 + 送出 */}
               {!alreadySubmitted && (
                 <div className="bg-white border-t border-gray-100 p-4 space-y-3">
                   <textarea
