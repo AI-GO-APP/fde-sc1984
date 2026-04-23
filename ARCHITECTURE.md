@@ -43,38 +43,35 @@
 ## 0. 抽象實體與關聯
 
 ```
-          ┌─────────────┐  salesperson_id
-          │  Customer   ├──────────────────▶ User ◀─user_id── Employee
-          └──┬─┬───┬────┘                      │                 │
-  contacts │ │   │ tag_rel                     │                 ├── department_id ─▶ Department (階層)
-           ▼ ▼   ▼                             │                 ├── job_id ─▶ Job
-   ContactNote   CustomerTag ──(custom_data)── ┘ (default_driver) ├── category_ids ─▶ EmployeeCategory (多對多)
-                  (= Region)                                      └── parent_id (主管鏈)
-           │
-           │  tag_prices
-           ▼
-   CustomerTagPrice ─▶ ProductProduct
+   Customer ──salesperson_id──▶ User ◀──user_id── Employee
+      │                          ▲                   ├── department_id ─▶ Department (階層)
+      ├─ contacts ─▶ CustomerContact                  ├── job_id ─▶ Job
+      │                                               ├── category_ids ─▶ EmployeeCategory (多對多)
+      └─ tag_rel ─▶ CustomerTag                       └── parent_id ─▶ (主管鏈)
+                      │  custom_data.default_driver_id ─▶ User 的 UUID
+                      │
+                      └─ tag_prices ─▶ CustomerTagPrice ─▶ ProductProduct
+                                         (某 tag 對某商品的專屬價；本專案暫不用)
 
-  ┌─────────────┐                       ┌──────────────┐
-  │  Supplier   │                       │ ProductTmpl  ├── categ_id ─▶ ProductCategory (階層)
-  └─┬───────────┘                       └──┬───────────┘
-    │ supplier_contacts                    │ product_supplierinfo (多對多)
-    ▼                                      ▼
-  SupplierContact                        (連回 Supplier)
+   Supplier ─ supplier_contacts ─▶ SupplierContact
+      │       custom_data.default_buyer_id ─▶ User 的 UUID
+      └─ product_supplierinfo ─▶ ProductTemplate
 
-                          sale_id                picking_id
-  SaleOrder ──── stock_pickings ◀── stock_moves ──────┐
-      │                │                               │
-      │ customer_id    │ user_id (司機)                │ sale_line_id
-      │ user_id (業務)  │ scheduled_date / date_done    │
-      ▼                                                ▼
-  SaleOrderLine                                  (連回 SaleOrderLine)
-      │
-      │ delivery_date (每 line 各自)
-      ▼
-  ProductProduct
+   ProductTemplate ── categ_id ─▶ ProductCategory (階層，parent_id 自引用)
+                                    custom_data.default_buyer_id ─▶ User 的 UUID
 
-  AuditLog (對每張業務表自動記錄)   IrConfigParameters (系統 KV)
+                            sale_id                    picking_id
+   SaleOrder ─────────▶ StockPicking ◀─── StockMove ────────┐
+      │ customer_id         │ customer_id                   │
+      │ user_id (業務)       │ user_id (司機)                 │ sale_line_id
+      ▼                     │ scheduled_date / date_done    ▼
+   SaleOrderLine            │ batch_id                 (連回 SaleOrderLine)
+      │ delivery_date       ▼
+      ▼              StockPickingBatch (一車多單)
+   ProductProduct
+
+   AuditLog (對每張業務表自動記錄；走 /api/v1/audit)
+   IrConfigParameter (系統 KV，如下單截止時間)
 ```
 
 ### 0.1 Customer（客戶）
