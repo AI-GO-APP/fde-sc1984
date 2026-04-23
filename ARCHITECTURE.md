@@ -498,10 +498,40 @@
 | 讀取截止時間 | POST query | `/proxy/{app}/ir_config_parameters/query` filters: `key eq 'sale.order_cutoff_time'` | `ir_config_parameters` |
 | 更新截止時間 | PATCH / POST | `/proxy/{app}/ir_config_parameters[/id]` | `ir_config_parameters` |
 
-### 2.11 Server-Side Actions（後端邏輯）
+### 2.11 後端邏輯落腳點
+
+本專案的「後端邏輯」分兩個落腳點：
+
+#### (A) AI GO Server Actions — 主要業務邏輯
+
+Python 腳本，跑在 AI GO 平台沙盒。**不是我們自己架的 server**。限制：
+
+- 30 秒 timeout、256 MB 記憶體
+- 白名單模組：`json`, `math`, `re`, `datetime`, `httpx` 等
+- 有完整 DB 寫入權限（`ctx.db`），**不受 refs 限制**
+- 繼承 App User 認證（`ctx.user`）
+- 呼叫端點：Ordering `POST /ext/actions/{slug}/{action}`；Admin 同理
+
+所有業務流程 action 都落在這裡（下列）。
+
+#### (B) `ordering/backend/server.js` — LINE Login OAuth Bridge
+
+**唯一自己架的後端**，只處理 LINE Login 的 OAuth token exchange：
+
+- 接前端傳來的 LINE `authorization code`
+- 以 `LINE_CHANNEL_SECRET`（不能放前端！）向 LINE API 交換 `access_token + id_token`
+- 驗證 id_token 後，用其資訊去 AI GO `custom-app-auth` 註冊/登入
+- 回傳 AI GO 的 JWT 給前端
+
+**為什麼不能走 Action**：OAuth redirect flow 需要**穩定的 HTTPS callback URL** 供 LINE 平台 redirect 回來、並持有 Channel Secret 做 server-to-server token exchange；AI GO Action 走 `/ext/actions/{slug}/{name}`，URL 不適合當 OAuth callback（而且需要 Custom App User Token 才能叫，但登入前還沒有 token）。這是 OAuth 第三方登入的結構性需求，幾乎不可避免要有個自家的薄 server。
+
+**未來可能的搬遷**：若 AI GO 推出「公開 OAuth callback endpoint」或「pre-auth webhook」，這 447 行可以完全拿掉。目前保留。
+
+#### Actions 清單
 
 | Action | 觸發時機 | 操作 |
 |---|---|---|
+| `line_login_bridge` | (在 ordering/backend/server.js，不是 AI GO Action) | LINE OAuth code → AI GO JWT；見上 (B) |
 | `place_order` | Ordering 前端下單 | 建 `sale_orders`（**不寫 `user_id`**）+ `sale_order_lines` |
 | `confirm_order` | Admin 確認訂單 | PATCH `sale_orders.state='sale'`；**自動建 stock_pickings**（outgoing 類型）；讀客戶區域 tag 的 custom_data 帶入 `user_id` (司機) |
 | `complete_delivery` | 司機回報送達 | PATCH `stock_pickings.state='done'`, `date_done=now`；更新 `stock_moves.quantity` |
