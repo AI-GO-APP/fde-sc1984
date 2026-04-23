@@ -1359,12 +1359,8 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
 
   useEffect(() => {
     Promise.all([
-      db.query("product_product", { filters: [{ column: "active", op: "eq", value: true }], limit: 1000 }),
-      db.query("x_product_product_price_log", {
-        order_by: [{ column: "effective_date", direction: "desc" }],
-        select_columns: ["product_product_id", "lst_price", "effective_date"],
-        limit: 1000,
-      }),
+      db.query("product_product", { limit: 1000 }),
+      db.query("x_product_product_price_log", { limit: 1000 }),
     ]).then(([ppRows, priceRows]) => {
       // tmpl_id → pp_id
       const t2p: Record<string, string> = {};
@@ -1615,12 +1611,8 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
       }).catch(() => {});
 
     Promise.all([
-      db.query("product_product", { filters: [{ column: "active", op: "eq", value: true }], limit: 1000 }),
-      db.query("x_product_product_price_log", {
-        order_by: [{ column: "effective_date", direction: "desc" }],
-        select_columns: ["product_product_id", "lst_price", "effective_date"],
-        limit: 1000,
-      }),
+      db.query("product_product", { limit: 1000 }),
+      db.query("x_product_product_price_log", { limit: 1000 }),
     ]).then(([ppRows, priceRows]) => {
       const t2p: Record<string, string> = {};
       for (const r of Array.isArray(ppRows) ? ppRows : []) {
