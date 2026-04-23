@@ -101,11 +101,33 @@
 
 - **CustomersPage 顯示**：依 `kind` 分組，樹狀展開（總公司展開看分店）；分店下單時自動把「帳單地址」(`customer_invoice_id`) 設為母公司（若有指定）
 
-### 0.2 CustomerContact（客戶子聯絡人 / 分店地址）
+### 0.2 CustomerContact（客戶聯絡人 / 送貨地址）
 
-- **性質**：隸屬於某個 Customer，供分店、多送貨地址、多聯絡人使用
+- **性質**：隸屬於某個 Customer 的**聯絡人或送貨地址**（**不是分店** — 分店當獨立 Customer，見 §0.1）
 - **關聯**：`customer_id → customers.id`
-- **欄位**：`name`, `type`, `contact_address`, `phone`, `email`, `line_id`, `note`
+- **欄位語意**：
+
+  | 欄位 | 用途 |
+  |---|---|
+  | `name` | 聯絡人姓名 |
+  | `type` | **Odoo 地址類型**（`contact` / `delivery` / `invoice` / `other`）— 下單時決定帶哪個地址進 `sale_orders.customer_shipping_id` / `customer_invoice_id`，**絕對不可挪用為角色欄位** |
+  | `contact_address`, `phone`, `email`, `line_id` | 通訊資料 |
+  | `note` | 自由備註 |
+
+- **`custom_data` 規格**（JSONB）：
+
+  ```json
+  {
+    "role": "store_manager" | "buyer" | "accountant" | "boss" | "other",
+    "role_label": "店長"   // 顯示用中文，允許自由填
+  }
+  ```
+
+- **一個人同時是聯絡人又是送貨地址**（如店長本身就是送貨對接人）有兩種建法：
+  - (A) 拆兩筆 — `type='contact'` 記店長身份；`type='delivery'` 另記送貨地址
+  - (B) 合一筆 — `type='delivery'` 並填 `name` 與 `custom_data.role='store_manager'`
+
+  (B) 省事且夠用，(A) 更符合 Odoo 設計哲學。本專案採 (B)。
 
 ### 0.3 CustomerTag（客戶標籤，兼作「區域」）
 
@@ -164,7 +186,7 @@
 - **反向關聯**：
   - `hr_employees.user_id` → 對應員工資料（姓名、部門等顯示用）
   - `customers.salesperson_id` → 是哪些客戶的業務員
-  - `sale_orders.user_id / maker_id / approver_id`
+  - `sale_orders.maker_id / approver_id`（製單、覆核；**`user_id` 本專案不用，業績改走 customers.salesperson_id**，見 §0.10）
   - `stock_pickings.user_id` → 是哪些出貨單的操作員（= 司機）
   - `purchase_orders.user_id / maker_id / approver_id`
 - **限制**：AI GO 沒暴露 `res_users` / `users` 表給 proxy，**前端只能透過 `hr_employees` 列出人員清單**，然後以 `hr_employees.user_id` 反查對應的 user UUID 來寫入上述欄位。
@@ -189,10 +211,14 @@
   - `state`: draft / sent / sale / done / cancel
   - `date_order` **下單日**
   - `customer_id`, `customer_invoice_id`, `customer_shipping_id`
-  - `user_id` **業務員**（下單時從 `customers.salesperson_id` 帶入）
   - `maker_id`, `approver_id`（製單、覆核）
   - `amount_untaxed`, `amount_tax`, `amount_total`
   - `note`, `client_order_ref`, `delivery_method`, `carrier_id`, `tracking_number`
+- **業績歸屬規則（重要）**：
+  - 業績一律 **JOIN `customers.salesperson_id`** — 以**客戶的主業務員**結算
+  - `sale_orders.user_id` **本專案不寫入、不用於業績**（Odoo 原生欄位仍存在，建單時留空）
+  - **理由**：業務員跑客戶是長期關係；避免「B 幫 A 代接電話下單」變成 B 搶業績
+  - `place_order` action 不寫 `user_id`；業績報表寫成 `SUM(sale_orders.amount_total) GROUP BY customers.salesperson_id`
 - **SaleOrderLine** 欄位重點：
   - `product_id`, `product_template_id`, `product_uom_qty`, `price_unit`
   - **`delivery_date`** 預交貨日（**每 line 各自，支援同單分日出貨**）
@@ -402,7 +428,7 @@
 
 | Action | 觸發時機 | 操作 |
 |---|---|---|
-| `place_order` | Ordering 前端下單 | 建 `sale_orders` + `sale_order_lines`，寫 `user_id` (= 客戶的 salesperson_id) |
+| `place_order` | Ordering 前端下單 | 建 `sale_orders`（**不寫 `user_id`**）+ `sale_order_lines` |
 | `confirm_order` | Admin 確認訂單 | PATCH `sale_orders.state='sale'`；**自動建 stock_pickings**（outgoing 類型）；讀客戶區域 tag 的 custom_data 帶入 `user_id` (司機) |
 | `complete_delivery` | 司機回報送達 | PATCH `stock_pickings.state='done'`, `date_done=now`；更新 `stock_moves.quantity` |
 | `recalc_order_total` | 訂單行異動後 | 重算 `sale_orders.amount_total` |
