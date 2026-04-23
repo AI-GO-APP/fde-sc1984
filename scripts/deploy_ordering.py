@@ -78,8 +78,28 @@ HOLIDAY_UUID = "96d01299-1d33-4ca7-b437-4bf5c78dfdcf"
 
 
 def fetch_price_data(h: dict) -> dict:
-    """VFS 已改為 runtime fetch，此函式僅保留供 build_vfs 呼叫（回傳空 dict 即可）。"""
-    return {}
+    """從 x_product_product_price_log 拉最新參考價，回傳 {product_product_id: {price, effective_date}}。"""
+    status, body = _req("GET", f"{API_BASE}/data/objects/{PRICE_LOG_UUID}/records", h, timeout=30)
+    if status != 200:
+        print(f"  ⚠️ 拉取 x_product_product_price_log 失敗：{status}，價格資料為空")
+        return {}
+    records = body if isinstance(body, list) else []
+    latest: dict = {}
+    for rec in records:
+        d = rec.get("data") or {}
+        pp_id = str(d.get("product_product_id", ""))
+        eff = str(d.get("effective_date", ""))
+        price = d.get("lst_price")
+        if not pp_id or not eff or price is None:
+            continue
+        try:
+            price = float(price)
+        except (ValueError, TypeError):
+            continue
+        if pp_id not in latest or eff > latest[pp_id]["effective_date"]:
+            latest[pp_id] = {"price": price, "effective_date": eff}
+    print(f"  x_product_product_price_log：{len(records)} 筆記錄，{len(latest)} 個商品有參考價")
+    return latest
 
 
 def fetch_holiday_data(h: dict) -> list:

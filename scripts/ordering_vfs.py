@@ -1255,6 +1255,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import * as db from "../db";
 import { Minus, Plus } from "lucide-react";
 import { CartItem } from "../App";
+import PRICE_DATA from "../price_data.json";
 
 interface Category { id: string; name: string; active: boolean; }
 interface Product { id: string; name: string; default_code: string | null; categ_id: string | null; uom_id?: string | null; sale_ok: boolean; active: boolean; }
@@ -1358,10 +1359,10 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
   const [priceMap, setPriceMap] = useState<Record<string, PriceInfo>>({});
 
   useEffect(() => {
-    Promise.all([
-      db.query("product_product", { limit: 1000 }),
-      db.query("x_product_product_price_log", { limit: 1000 }),
-    ]).then(([ppRows, priceRows]) => {
+    db.query("product_product", {
+      filters: [{ column: "active", op: "eq", value: true }],
+      limit: 1000,
+    }).then(ppRows => {
       // tmpl_id → pp_id
       const t2p: Record<string, string> = {};
       for (const r of Array.isArray(ppRows) ? ppRows : []) {
@@ -1371,22 +1372,11 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
       }
       setTmplToProd(t2p);
 
-      // pp_id → latest price
-      const latestByPP: Record<string, PriceInfo> = {};
-      for (const r of Array.isArray(priceRows) ? priceRows : []) {
-        const ppId = String(r.product_product_id || '');
-        const eff = String(r.effective_date || '');
-        const price = Number(r.lst_price);
-        if (!ppId || !eff || isNaN(price)) continue;
-        if (!latestByPP[ppId] || eff > latestByPP[ppId].effective_date) {
-          latestByPP[ppId] = { price, effective_date: eff };
-        }
-      }
-
-      // tmpl_id → price
+      // baked price_data (deploy 時已用 admin bearer fetch，keyed by pp_id)
+      const baked = PRICE_DATA as Record<string, PriceInfo>;
       const pm: Record<string, PriceInfo> = {};
       for (const [tmplId, ppId] of Object.entries(t2p)) {
-        if (latestByPP[ppId]) pm[tmplId] = latestByPP[ppId];
+        if (baked[ppId]) pm[tmplId] = baked[ppId];
       }
       setPriceMap(pm);
     }).catch(() => {});
@@ -1570,6 +1560,7 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
 import * as db from "../db";
 import { Minus, Plus, Trash2, Send } from "lucide-react";
 import { CartItem, AppUser } from "../App";
+import PRICE_DATA from "../price_data.json";
 
 const DAY_NAMES = ["日","一","二","三","四","五","六"];
 
@@ -1610,29 +1601,20 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
         setProdMap(m);
       }).catch(() => {});
 
-    Promise.all([
-      db.query("product_product", { limit: 1000 }),
-      db.query("x_product_product_price_log", { limit: 1000 }),
-    ]).then(([ppRows, priceRows]) => {
+    db.query("product_product", {
+      filters: [{ column: "active", op: "eq", value: true }],
+      limit: 1000,
+    }).then(ppRows => {
       const t2p: Record<string, string> = {};
       for (const r of Array.isArray(ppRows) ? ppRows : []) {
         const raw = r.product_tmpl_id;
         const tmplId = Array.isArray(raw) ? String(raw[0]) : String(raw || '');
         if (tmplId && r.id) t2p[tmplId] = String(r.id);
       }
-      const latestByPP: Record<string, { price: number; effective_date: string }> = {};
-      for (const r of Array.isArray(priceRows) ? priceRows : []) {
-        const ppId = String(r.product_product_id || '');
-        const eff = String(r.effective_date || '');
-        const price = Number(r.lst_price);
-        if (!ppId || !eff || isNaN(price)) continue;
-        if (!latestByPP[ppId] || eff > latestByPP[ppId].effective_date) {
-          latestByPP[ppId] = { price, effective_date: eff };
-        }
-      }
+      const baked = PRICE_DATA as Record<string, { price: number; effective_date: string }>;
       const pm: Record<string, { price: number; effective_date: string }> = {};
       for (const [tmplId, ppId] of Object.entries(t2p)) {
-        if (latestByPP[ppId]) pm[tmplId] = latestByPP[ppId];
+        if (baked[ppId]) pm[tmplId] = baked[ppId];
       }
       setPriceMap(pm);
     }).catch(() => {});
