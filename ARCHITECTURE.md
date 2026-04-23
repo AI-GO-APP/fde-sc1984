@@ -102,6 +102,13 @@
   }
   ```
 
+- **代下單關係**（誰可以用 Ordering 登入後代這個 customer 下單）：
+  - 由 `customer_custom_app_user_rel` 多對多記錄（原生表）
+  - 一個 `custom_app_user`（個人帳號 P）可掛多個 customer（例：某採買員 P 掛公司總部 A + 分店 A1 + 分店 A2）
+  - 一個 customer 也可被多人代表（例：A 店的店長、副店長都能下 A 店的單）
+  - **P 不必是 customer 本身**（P 是 ordering 登入帳號，customer 是業務實體；兩者透過此表關聯）
+  - Action 內驗證：任何代某 customer 的操作必須先檢查 `(ctx.user.custom_app_user_id, target_customer_id) ∈ customer_custom_app_user_rel`
+
   **為什麼分店要當 Customer 而不是 customer_contact**：
   - 分店要能獨立下單、獨立收帳、獨立追蹤出貨 → 必須是 Customer
   - `customer_contacts` 在 Odoo 是「聯絡人/地址點」，沒有自己的訂單流程、帳務流程
@@ -197,16 +204,65 @@
 - **欄位**：`name`, `color`（**扁平，無階層**；需要階層請用 department）
 - **關聯**：透過 `hr_employees.category_ids` JSON 陣列
 
-### 0.7 User（系統使用者）
+### 0.7 User / Member / CustomAppUser（三套帳號系統）
 
-- **性質**：AI GO 的系統登入帳號。**所有「誰做了某動作」都指向 User，不是 Employee。**
-- **反向關聯**：
-  - `hr_employees.user_id` → 對應員工資料（姓名、部門等顯示用）
-  - `customers.salesperson_id` → 是哪些客戶的業務員
-  - `sale_orders.maker_id / approver_id`（製單、覆核；**`user_id` 本專案不用，業績改走 customers.salesperson_id**，見 §0.10）
-  - `stock_pickings.user_id` → 是哪些出貨單的操作員（= 司機）
-  - `purchase_orders.user_id / maker_id / approver_id`
-- **限制**：AI GO 沒暴露 `res_users` / `users` 表給 proxy，**前端只能透過 `hr_employees` 列出人員清單**，然後以 `hr_employees.user_id` 反查對應的 user UUID 來寫入上述欄位。
+AI GO 有**三張帳號表**，對應不同的使用者類型。**本專案員工走 User 系，客戶走 CustomAppUser 系**（見下）。
+
+| 表 | 用途 | 誰是這個 |
+|---|---|---|
+| `members` | tenant 內的個人檔案（name / email / mobile / status） | 員工（與客戶無關） |
+| `users` | **tenant 內的登入帳號**（綁 `member_id`，Supabase Auth 管密碼） | 員工 |
+| `custom_app_users` | **Custom App 獨立使用者池**（每個 App 獨立 email 命名空間） | 客戶 |
+
+**關係圖**：
+
+```
+ 員工：       Employee (hr_employees)
+               ├── user_id   ─▶ users (登入帳號)
+               │                 └── member_id ─▶ members (個人檔)
+               └── member_id ─▶ members (冗餘，方便 join)
+
+ 客戶：       Customer (customers) (業務實體)
+               ▲
+               │ customer_custom_app_user_rel (多對多)
+               │
+               └── CustomAppUser (custom_app_users) — 登入帳號
+```
+
+#### 為什麼有兩套（背景）
+
+Odoo 原生**所有要登入的人都是 `res.users`**，包括客戶 — 客戶登入 Odoo 客戶門戶看訂單叫 **Portal User**，仍然是 res.users + `Portal` 權限組。
+
+AI GO 的設計取捨是**把「Custom App 的使用者」拆出獨立表 `custom_app_users`**，理由大概是：
+- 客戶數量可能遠大於員工，不想污染 Odoo `res.users`
+- 每個 Custom App 獨立使用者池，不同 App 間互不干擾
+- Custom App 是薄殼，不該接上整套 Odoo RBAC
+
+代價：客戶帳號無法直接使用 Odoo 的 user_role_rel / 業務欄位（salesperson_id 等），只能透過 `customer_custom_app_user_rel` 間接關聯到 `customers` 再 join 到業務表。
+
+#### 對我們的含義
+
+- **員工必須是 `users`**：所有業務欄位（`*.user_id` / `salesperson_id` / `maker_id` / `approver_id`）、`user_role_rel` RBAC、`audit_logs.actor_id`、`custom_apps.access_role_ids` **全部綁 `users.id`**。若員工是 `custom_app_users` 會完全接不上這些。
+- **客戶必須是 `custom_app_users`**：Custom App 登入流程（LINE Login、帳密、OAuth）只能產出 `custom_app_users`；想讓客戶有登入帳號就只能走這條。
+- **Admin Action 的 `ctx.user` = `users.id`**（走 AI GO platform SSO exchange）
+- **Ordering Action 的 `ctx.user` = `custom_app_users.id`**（走 custom-app-auth）
+
+#### 誰指到 User（用 users.id 的欄位）
+
+- `hr_employees.user_id` / `hr_employees.member_id`（員工登入身份）
+- `customers.salesperson_id` → 誰是業務員
+- `sale_orders.maker_id / approver_id`（製單 / 覆核；**`user_id` 本專案不用**，業績改走 customers.salesperson_id，見 §0.10）
+- `stock_pickings.user_id` → 司機
+- `purchase_orders.user_id / maker_id / approver_id` → 採購員
+- `crm_teams.user_id` / `crm_team_members.user_id` → 團隊成員
+- `user_role_rel.user_id` → RBAC 綁定
+- `audit_logs.actor_id` → 稽核當事人
+
+#### 限制：refs 擋著 users 表
+
+AI GO 不讓 Custom App 透過 `/proxy/` 讀 `users` 表。前端要顯示「業務員清單」或「選司機下拉」只能：
+- 列 `hr_employees`（已在 Admin refs 白名單），讀它的 `user_id` 欄位拿對應 users.id
+- 或透過 Action（`list_employees`）包一層回傳乾淨資料
 
 ### 0.8 ProductTemplate / ProductProduct（產品）
 
@@ -363,6 +419,8 @@
 | `ir_config_parameters` | 系統設定限管理階層 |
 
 ★ = 尚未註冊，Phase 1 需補
+
+**不走 refs 的 AI GO 原生 API**（這些表由 AI GO 專用 endpoint 管理，不需要也不該放進 refs）：`users`, `members`, `roles`, `user_role_rel`, `invitations`, `tenants`, `custom_app_users`, `custom_app_user_sessions`, `custom_app_user_identities`, `audit_logs`。對應 API 見 §2.13（員工管理）和 §2.9（Audit）。
 
 #### 1.1.b Ordering App (`deploy_ordering.py`)
 
@@ -636,6 +694,63 @@ def can_see_customer(viewer, target):
 
 ---
 
+### 2.13 員工帳號管理（tenant 自管）
+
+**業主（tenant owner）可以自己加員工**，AI GO 提供完整邀請 API。流程：
+
+```
+1. 業主在 Admin App /admin/settings/employees 點「+ 邀請員工」
+   → Admin Bearer 打 POST /api/v1/invitations { email, role_ids, ... }
+   → AI GO 寄邀請 email 給該 email
+
+2. 受邀者點連結 → 設密碼 / 綁 SSO
+   → AI GO 自動建立：
+      - users 登入帳號（Supabase Auth 管密碼）
+      - members 個人檔（name/email/mobile）
+      - user_role_rel 綁 role
+      - 所有資料綁到本 tenant_id
+
+3. 業主回 Admin App 建立員工業務資料
+   → POST hr_employees {
+        user_id: 新建 user.id,
+        member_id: 新建 member.id,
+        department_id, job_id, category_ids (角色標籤)
+      }
+```
+
+**Admin App 可用的 AI GO API**（持 Admin Bearer）：
+
+| API | 用途 |
+|---|---|
+| `POST /invitations` | 發邀請 |
+| `GET /invitations` | 列待處理邀請 |
+| `DELETE /invitations/{id}` | 撤銷邀請 |
+| `GET /invitations/verify/{token}` | （受邀方用）驗證 token |
+| `GET/POST /members` | 列 / 建成員（不走邀請信的直接建） |
+| `GET/PUT /members/{id}` | 改個人檔 |
+| `POST /members/{id}/resend-invite` | 重送邀請 |
+| `GET /members/{id}/linked-roles` | 此成員目前的 role |
+| `GET/POST /members/roles` | 角色 CRUD |
+| `PUT/DELETE /members/roles/{role_id}` | 改/刪某 role |
+| `GET/PATCH /tenant` | tenant 自身設定 |
+| `DELETE /account/members/{id}/user` | 離職刪除（連 user 一起清） |
+
+**Action 上的包裝**：雖然這些是 AI GO 原生 API（不是 proxy/表操作），但為了統一權限檢查（只有 admin role 才能邀請員工），Admin 端仍用 Action 包一層，Action 內部呼叫這些 API。清單：
+
+| Action | 呼叫 |
+|---|---|
+| `invite_employee` | POST /invitations + 追加 POST hr_employees（業務資料） |
+| `list_pending_invitations` | GET /invitations |
+| `revoke_invitation` | DELETE /invitations/{id} |
+| `resend_invitation` | POST /members/{id}/resend-invite |
+| `deactivate_employee` | PATCH hr_employees.active=false（輕度停用，保留帳號） |
+| `remove_employee` | DELETE /account/members/{id}/user（離職，連 user 一起砍）|
+| `list_roles` | GET /members/roles |
+
+**「員工不必也不該另外建 `custom_app_user`」**：Admin App 的登入走 `/ext/auth/exchange`（AI GO platform SSO → Admin Bearer），token 背後是 users；不需要員工另外註冊 Custom App 帳號。
+
+---
+
 ## 3. 前端頁面 / 元件映射
 
 目前有兩套前端：**`admin/src/`**（Vite 本機開發）與 **VFS**（`scripts/pages.py` 注入線上）。**新實作優先放 VFS**（那是實際上線版本），必要時再同步到 `admin/src`。
@@ -674,8 +789,9 @@ Admin 首頁路由架構：
 | **CustomerTag** | `CustomerTagsPage` (新) | ★ 待做 | 按 `custom_data.category` 分 region/level/attribute 三區顯示；region 類可設 `default_driver_id`；查看該 tag 的客戶清單 |
 | **CustomerTagRel** | 併入 `CustomersPage` 編輯 | ★ 待做 | 打/拔 tag（region/level 強制單選、attribute 多選） |
 | **Supplier** | `SuppliersPage` (新) | ★ 待做 | 列表、建立、編輯（含 default_buyer_id）；取代 `SupplierMappingPage` |
-| **Employee** | `EmployeesPage` (新) | ★ 待做 | 列表、編輯 active/department/job/category_ids |
+| **Employee** | `EmployeesPage` (新) | ★ 待做 | 列表；**邀請新員工**（POST /invitations + 建 hr_employees）；編輯 active/department/job/category_ids；重送/撤銷邀請；離職刪除 |
 | **EmployeeCategory** | inline 在 `EmployeesPage` | ★ 待做 | 標籤指派 |
+| **Invitation** | inline 在 `EmployeesPage`（「待邀請」分頁） | ★ 待做 | 列未接受的邀請、重送、撤銷 |
 | **ProductTemplate** | `ProductsPage` | ✅ 已做 | 列表、上下架、改分類；**補：新增產品、設主供應商 `default_supplier_id`（custom_data）** |
 | **ProductCategory** | `ProductCategoriesPage` | ✅ 已做 | CRUD（純分類，不碰採購員） |
 | **SaleOrder** | `OrdersPage` / `SalesOrdersPage` (VFS) | ✅ 已做 | 確認、編輯；**補：確認時自動建 stock_pickings** |
