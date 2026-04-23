@@ -1059,10 +1059,10 @@ export async function queryCustom(slug: string): Promise<any[]> {
 }
 
 export async function runAction(actionName: string, params: Record<string, any> = {}): Promise<any> {
+  const appSlug = (window as any).__APP_SLUG__ || '';
   const appId = (window as any).__APP_ID__ || '';
-  const isExternal = !!(window as any).__IS_EXTERNAL__;
-  const actionUrl = isExternal
-    ? API_BASE + '/ext/actions/run/' + actionName
+  const actionUrl = appSlug
+    ? API_BASE + '/ext/actions/' + appSlug + '/' + actionName
     : API_BASE + '/actions/run/' + appId + '/' + actionName;
   const resp = await fetch(actionUrl, {
     method: 'POST', headers: _h(), credentials: 'include',
