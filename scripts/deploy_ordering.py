@@ -77,15 +77,36 @@ PRICE_LOG_UUID = "390d4f0b-9a2b-4131-a35b-67fce21286be"
 HOLIDAY_UUID = "96d01299-1d33-4ca7-b437-4bf5c78dfdcf"
 
 
+def _fetch_pp_to_tmpl_map() -> dict:
+    """用 open/proxy + ORDERING_WRITE_KEY 查 product_product，回傳 {pp_id: tmpl_id}"""
+    api_key = os.environ.get("ORDERING_WRITE_KEY", "").strip()
+    if not api_key:
+        return {}
+    oh = {"Content-Type": "application/json", "X-API-Key": api_key}
+    status, body = _req("POST", f"{API_BASE}/open/proxy/product_product/query", oh,
+                        {"select_columns": ["id", "product_tmpl_id"],
+                         "filters": [{"column": "active", "op": "eq", "value": True}],
+                         "limit": 1000}, timeout=30)
+    if status != 200 or not isinstance(body, list):
+        print(f"  ⚠️ 拉取 product_product 失敗：{status}")
+        return {}
+    m = {}
+    for r in body:
+        if r.get("id") and r.get("product_tmpl_id"):
+            m[str(r["id"])] = str(r["product_tmpl_id"])
+    print(f"  product_product：{len(m)} 筆 pp→tmpl 對應")
+    return m
+
+
 def fetch_price_data(h: dict) -> dict:
-    """從 x_product_product_price_log 拉最新一筆價格（per product_product_id），回傳 {product_id: {price, effective_date}}"""
+    """從 x_product_product_price_log 拉最新一筆價格，回傳 {product_template_id: {price, effective_date}}"""
     status, body = _req("GET", f"{API_BASE}/data/objects/{PRICE_LOG_UUID}/records", h, timeout=30)
     if status != 200:
         print(f"  ⚠️ 拉取 x_product_product_price_log 失敗：{status}，前端將無參考價")
         return {}
     records = body if isinstance(body, list) else []
-    # 每筆格式: { id, data: { product_product_id, lst_price, standard_price, effective_date }, created_at }
-    latest: dict = {}
+    # 先依 product_product_id 取最新一筆
+    latest_by_pp: dict = {}
     for rec in records:
         d = rec.get("data") or {}
         pid = str(d.get("product_product_id") or "").strip()
@@ -93,10 +114,22 @@ def fetch_price_data(h: dict) -> dict:
         price = d.get("lst_price")
         if not pid or not eff or price is None:
             continue
-        if pid not in latest or eff > latest[pid]["effective_date"]:
-            latest[pid] = {"price": price, "effective_date": eff}
-    print(f"  x_product_product_price_log：{len(records)} 筆記錄，{len(latest)} 個商品有效價格")
-    return latest
+        if pid not in latest_by_pp or eff > latest_by_pp[pid]["effective_date"]:
+            latest_by_pp[pid] = {"price": price, "effective_date": eff}
+
+    # 轉換 key：pp_id → template_id
+    pp_to_tmpl = _fetch_pp_to_tmpl_map()
+    if pp_to_tmpl:
+        latest: dict = {}
+        for pp_id, info in latest_by_pp.items():
+            tmpl_id = pp_to_tmpl.get(pp_id)
+            if tmpl_id:
+                latest[tmpl_id] = info
+        print(f"  x_product_product_price_log：{len(records)} 筆，{len(latest)} 個商品有效價格（by template_id）")
+        return latest
+    else:
+        print(f"  x_product_product_price_log：{len(records)} 筆，{len(latest_by_pp)} 個（fallback: by pp_id）")
+        return latest_by_pp
 
 
 def fetch_holiday_data(h: dict) -> list:

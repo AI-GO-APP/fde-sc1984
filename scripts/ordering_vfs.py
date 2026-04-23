@@ -1311,7 +1311,7 @@ function ProductCard({ p, cart, addToCart, setCartExact, uomMap, deliveryDate, t
   tmplToProd: Record<string, string>;
 }) {
   const productProductId = tmplToProd[p.id];
-  const priceInfo = priceMap[productProductId ?? p.id];
+  const priceInfo = priceMap[p.id];
   const qty = cart.find(i => i.productId === p.id && i.deliveryDate === deliveryDate)?.qty ?? 0;
   return (
     <div className="product-card">
@@ -1621,6 +1621,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
         customer_id: customerId,
         date_order: new Date().toISOString().slice(0, 10),
         note: `配送日期：${date}${note ? `\n${note}` : ""}`,
+        state: "draft",
       });
       const orderId = order?.id;
       if (!orderId) throw new Error("建立訂單失敗");
@@ -1632,7 +1633,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
           ...(item.productProductId ? { product_id: item.productProductId } : {}),
           name: prodMap[item.productId]?.name || item.productId,
           product_uom_qty: item.qty,
-          price_unit: priceMap[item.productProductId ?? item.productId]?.price ?? 0,
+          price_unit: priceMap[item.productId]?.price ?? 0,
           delivery_date: date,
         })
       ));
@@ -1640,7 +1641,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
       if (failCount > 0) throw new Error(`${failCount} 筆明細建立失敗`);
 
       const amount_total = items.reduce((sum, item) => {
-        const price = priceMap[item.productProductId ?? item.productId]?.price ?? 0;
+        const price = priceMap[item.productId]?.price ?? 0;
         return sum + price * item.qty;
       }, 0);
       if (amount_total > 0) {
@@ -1671,10 +1672,10 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
       {dateGroups.map(({ date, items }) => {
         const isSubmitting = submitting === date;
         const groupTotal = items.reduce((sum, item) => {
-          const pi = priceMap[item.productProductId ?? item.productId];
+          const pi = priceMap[item.productId];
           return pi ? sum + pi.price * item.qty : sum;
         }, 0);
-        const hasPrice = items.some(item => !!(priceMap[item.productProductId ?? item.productId]));
+        const hasPrice = items.some(item => !!(priceMap[item.productId]));
 
         return (
           <div key={date} className="date-group">
@@ -1686,7 +1687,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
             <div className="cart-list" style={{ margin: 0, borderRadius: 0 }}>
               {items.map(item => {
                 const p = prodMap[item.productId];
-                const pi = priceMap[item.productProductId ?? item.productId];
+                const pi = priceMap[item.productId];
                 const subtotal = pi ? pi.price * item.qty : null;
                 return (
                   <div key={item.productId} className="cart-item" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
