@@ -10,20 +10,21 @@
 ## 專案結構
 
 ```
-vfs/admin/      ← Admin App 前端原始碼（真正的 TSX/TS 檔）
-vfs/ordering/   ← Ordering App 前端原始碼（真正的 TSX/TS 檔）
-demo/           ← AI-Go 官方模板參考（唯讀，禁止修改）
-scripts/
-  deploy_admin.py    ← 讀 vfs/admin/ 上傳並發布
-  deploy_ordering.py ← 讀 vfs/ordering/ 上傳並發布
+vfs/
+  admin/      ← Admin App 前端原始碼（真正的 TSX/TS 檔）
+  ordering/   ← Ordering App 前端原始碼（真正的 TSX/TS 檔）
+  scripts/
+    deploy_admin.py    ← 讀 vfs/admin/ 上傳並發布
+    deploy_ordering.py ← 讀 vfs/ordering/ 上傳並發布
+demo/         ← AI-Go 官方模板參考（唯讀，禁止修改）
 ```
 
 ## 部署
 
 ```bash
 set -a && source .env && set +a
-python3 scripts/deploy_admin.py
-python3 scripts/deploy_ordering.py
+python3 vfs/scripts/deploy_admin.py
+python3 vfs/scripts/deploy_ordering.py
 ```
 
 ## 資料存取原則
