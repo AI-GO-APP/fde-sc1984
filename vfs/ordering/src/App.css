@@ -346,18 +346,6 @@ html, :host {
   gap: 8px;
 }
 
-.fav-btn {
-  flex-shrink: 0;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 2px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-}
-.fav-btn .fav-active { color: #f59e0b; }
-
 .product-info { flex: 1; min-width: 0; overflow: hidden; }
 .product-code { font-size: 11px; color: var(--text-muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .product-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

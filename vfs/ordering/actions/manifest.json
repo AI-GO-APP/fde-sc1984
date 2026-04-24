@@ -19,8 +19,5 @@
   },
   "redeem_invite_token": {
     "description": "以邀請連結中的 invite_token 找到對應分店，為當前 ctx.user 建立 customer_custom_app_user_rel（P↔S 及 P↔C），token 永久有效可重複使用"
-  },
-  "manage_favorites": {
-    "description": "管理客戶收藏商品：op=list/add/remove"
   }
 }

@@ -3,13 +3,6 @@ import * as db from "../db";
 import { AppUser } from "../App";
 import { RefreshCw } from "lucide-react";
 
-
-function fmtQty(v: any): string {
-  const n = Number(v);
-  if (isNaN(n)) return "—";
-  return n % 1 === 0 ? String(n) : parseFloat(n.toFixed(2)).toString();
-}
-
 const STATE_LABELS: Record<string, string> = {
   draft: "已送出", sent: "已送出", sale: "已確認", done: "完成", cancel: "已取消",
 };
@@ -166,8 +159,8 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
                     onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setEditQtys(prev => ({ ...prev, [l.id]: v as any })); }}
                     onBlur={e => setEditQtys(prev => ({ ...prev, [l.id]: parseFloat(e.target.value) || 0 }))}
                     style={{ width:"64px", padding:"2px 6px", border:"1px solid #d1d5db", borderRadius:"4px", fontSize:"14px", textAlign:"right" }} />
-                ) : fmtQty(l.product_uom_qty)}</td>
-                <td>{Number(l.price_unit) > 0 ? `$${Number(l.price_unit).toLocaleString()}` : "—"}</td>
+                ) : (l.product_uom_qty ?? "—")}</td>
+                <td>{typeof l.price_unit === "number" ? `$${l.price_unit.toLocaleString()}` : "—"}</td>
               </tr>
             ))}</tbody>
           </table>

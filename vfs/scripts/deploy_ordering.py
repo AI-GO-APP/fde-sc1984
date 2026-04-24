@@ -100,7 +100,7 @@ def compile_app(h, app_id):
     if status != 200:
         sys.exit(f"❌ 取得 App 資訊失敗：{status}")
     slug = body.get("slug", app_id)
-    s2, result = _req("POST", f"{API_BASE}/compile/compile/{slug}?dev=true", h, {}, timeout=60)
+    s2, result = _req("POST", f"{API_BASE}/compile/compile/{slug}", h, {}, timeout=60)
     if not result.get("success"):
         sys.exit(f"❌ 編譯失敗：\n{result.get('error', '未知錯誤')}")
     print("  編譯：成功")
