@@ -1,15 +1,92 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as db from '../../db';
+
 type Tmpl = { id:string; name:string; default_code:string; categ_id:any; sale_ok:boolean };
 type Cat = { id:string; name:string };
-// AI GO /proxy 回傳 many2one 是純 UUID 字串（不是 Odoo 傳統的 [id, name] 陣列）
+
+const ALL_TAB = '__all__';
+
 const resolveId = (raw:any): string => {
   if (raw === null || raw === undefined || raw === false) return '';
   if (Array.isArray(raw)) return String(raw[0] ?? '');
   if (typeof raw === 'object' && raw !== null && 'id' in raw) return String((raw as any).id ?? '');
   return String(raw);
 };
+
+function AddProductModal({ cats, onClose, onDone }: {
+  cats: Cat[]; onClose: () => void; onDone: (catId: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [catId, setCatId] = useState('');
+  const [listPrice, setListPrice] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (!name.trim()) { setError('品名為必填'); return; }
+    setSaving(true); setError('');
+    try {
+      await db.insert('product_templates', {
+        name: name.trim(),
+        ...(code.trim() ? { default_code: code.trim() } : {}),
+        ...(catId ? { categ_id: catId } : {}),
+        ...(listPrice ? { list_price: Number(listPrice) } : {}),
+        sale_ok: false,
+        active: true,
+      });
+      onDone(catId);
+    } catch (e: any) {
+      setError(e.message || '新增失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 mb-4">新增產品</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">品名 <span className="text-red-500">*</span></label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="輸入品名..."
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">編碼</label>
+            <input type="text" value={code} onChange={e => setCode(e.target.value)} placeholder="選填"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">分類</label>
+            <select value={catId} onChange={e => setCatId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">不設定</option>
+              {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">售價</label>
+            <input type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} placeholder="選填" min="0" step="1"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+        </div>
+        <p className="text-xs text-gray-400 mt-3">新增後預設為「下架」，可至列表手動上架。</p>
+        <div className="flex gap-3 mt-4">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">取消</button>
+          <button onClick={handleSubmit} disabled={saving}
+            className="flex-1 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-300">
+            {saving ? '新增中...' : '確認新增'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProductsPage() {
   const nav = useNavigate();
   const [tmpls, setTmpls] = useState<Tmpl[]>([]);
@@ -20,6 +97,9 @@ export default function ProductsPage() {
   const [editId, setEditId] = useState<string|null>(null);
   const [editCat, setEditCat] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [activeTab, setActiveTab] = useState(ALL_TAB);
+
   const load = async () => {
     setLoading(true); setError('');
     try {
@@ -31,25 +111,40 @@ export default function ProductsPage() {
       setCats((cs||[]).map((r:any)=>({id:String(r.id), name:String(r.name||'')})));
     } catch(e:any) { setError(e?.message||'載入失敗'); } finally { setLoading(false); }
   };
+
   useEffect(()=>{ load(); }, []);
-  // 當 editId 或 tmpls 改變時，重算 editCat，避免 stale state
+
   useEffect(() => {
     if (!editId) return;
     const p = tmpls.find(x => x.id === editId);
     setEditCat(p ? resolveId(p.categ_id) : '');
   }, [editId, tmpls]);
+
   const catName = (raw:any): string => {
     const id = resolveId(raw);
     if (!id) return '';
     const arrName = Array.isArray(raw) && raw.length >= 2 ? String(raw[1]) : '';
     return cats.find(c => c.id === id)?.name || arrName;
   };
-  const filtered = useMemo(()=>{
+
+  // 分類頁籤（依商品實際用到的分類）
+  const tabs = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of tmpls) {
+      const name = catName(p.categ_id);
+      if (name) set.add(name);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  }, [tmpls, cats]);
+
+  const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
-    const sorted = [...tmpls].sort((a,b)=>a.name.localeCompare(b.name, 'zh-Hant'));
-    if (!kw) return sorted;
-    return sorted.filter(p => p.name.toLowerCase().includes(kw) || p.default_code.toLowerCase().includes(kw) || catName(p.categ_id).toLowerCase().includes(kw));
-  }, [tmpls, search, cats]);
+    let list = [...tmpls].sort((a,b)=>a.name.localeCompare(b.name, 'zh-Hant'));
+    if (activeTab !== ALL_TAB) list = list.filter(p => catName(p.categ_id) === activeTab);
+    if (!kw) return list;
+    return list.filter(p => p.name.toLowerCase().includes(kw) || p.default_code.toLowerCase().includes(kw) || catName(p.categ_id).toLowerCase().includes(kw));
+  }, [tmpls, search, cats, activeTab]);
+
   const save = async (id:string) => {
     setSaving(true);
     try {
@@ -58,6 +153,7 @@ export default function ProductsPage() {
       setEditId(null); setEditCat('');
     } catch(e:any) { alert(e?.message||'儲存失敗'); } finally { setSaving(false); }
   };
+
   const togglePublish = async (p:Tmpl) => {
     const next = !p.sale_ok;
     const msg = next ? `將「${p.name}」上架？上架後客戶可在訂購頁下單此商品。` : `將「${p.name}」下架？下架後客戶端將不顯示。`;
@@ -67,16 +163,63 @@ export default function ProductsPage() {
       await load();
     } catch(e:any) { alert(e?.message||'切換失敗'); }
   };
+
+  const handleAddDone = async (catId: string) => {
+    setShowAdd(false);
+    await load();
+    // 切換至新增商品所屬分類頁籤
+    if (catId) {
+      const cat = cats.find(c => c.id === catId);
+      if (cat && tabs.includes(cat.name)) setActiveTab(cat.name);
+      else {
+        // load 後 tabs 會更新，需等一個 tick 再切
+        setTimeout(() => {
+          setCats(prev => {
+            const found = prev.find(c => c.id === catId);
+            if (found) setActiveTab(found.name);
+            return prev;
+          });
+        }, 100);
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center gap-3 max-w-6xl mx-auto">
-          <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
-          <h1 className="text-xl font-bold text-gray-900">產品管理</h1>
+        <div className="flex items-center justify-between max-w-6xl mx-auto">
+          <div className="flex items-center gap-3">
+            <button onClick={()=>nav('/admin/settings')} className="text-gray-500 hover:text-gray-700 text-sm">← 返回</button>
+            <h1 className="text-xl font-bold text-gray-900">產品管理</h1>
+          </div>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+            ＋ 新增產品
+          </button>
         </div>
       </header>
+
+      {/* 分類頁籤 */}
+      {tabs.length > 0 && (
+        <div className="bg-white border-b border-gray-200 px-6">
+          <div className="flex gap-0 overflow-x-auto max-w-6xl mx-auto">
+            <button onClick={() => setActiveTab(ALL_TAB)}
+              className={`py-3 px-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === ALL_TAB ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              全部
+            </button>
+            {tabs.map(tab => (
+              <button key={tab} onClick={() => setActiveTab(tab)}
+                className={`py-3 px-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="p-6 max-w-6xl mx-auto space-y-4">
-        <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜尋品名、編碼或分類" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white" />
+        <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜尋品名、編碼或分類"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white" />
         {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
         {loading ? <p className="text-gray-400 text-center py-12">載入中...</p> :
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -125,6 +268,10 @@ export default function ProductsPage() {
           </table>}
         </div>}
       </div>
+
+      {showAdd && (
+        <AddProductModal cats={cats} onClose={() => setShowAdd(false)} onDone={handleAddDone} />
+      )}
     </div>
   );
 }
