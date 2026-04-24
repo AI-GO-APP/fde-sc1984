@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useData } from '../../data/DataProvider';
 import DatePickerWithCounts from '../../components/DatePickerWithCounts';
 import * as db from '../../db';
+import { fmtQty } from '../../utils/displayHelpers';
 
 const Arrow = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>;
 const InboxIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>;
@@ -20,7 +21,7 @@ function LineTable({ rows }: { rows: { id:string; name:string; qty:number; price
         {rows.map(l=>(
           <tr key={l.id} className="border-t border-gray-50">
             <td className="py-1.5 font-medium">{l.name}</td>
-            <td className="py-1.5 text-right text-gray-500">{l.qty.toFixed(1)}</td>
+            <td className="py-1.5 text-right text-gray-500">{fmtQty(l.qty)}</td>
             <td className="py-1.5 text-right text-gray-600">
               ${l.price.toLocaleString()}
               {l.fromLog&&<span className="text-amber-500 text-xs ml-1" title="依最近歷史售價估算">*</span>}
@@ -218,7 +219,7 @@ export default function PurchaseListPage() {
                     <tr key={id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-3 px-4 text-gray-400">{i+1}</td>
                       <td className="py-3 px-4 font-medium">{d.name}</td>
-                      <td className="py-3 px-4 text-right font-bold text-primary">{d.totalQty.toFixed(1)}</td>
+                      <td className="py-3 px-4 text-right font-bold text-primary">{fmtQty(d.totalQty)}</td>
                       <td className="py-3 px-4 text-right text-gray-500">{d.uom||'—'}</td>
                     </tr>
                   ))}

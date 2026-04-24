@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as db from '../../db';
 import { useData } from '../../data/DataProvider';
+import { fmtQty } from '../../utils/displayHelpers';
 import DatePickerWithCounts from '../../components/DatePickerWithCounts';
 
 const Arrow = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>;
@@ -327,7 +328,7 @@ export default function ProcurementPage() {
                                   </div>
                                   {item.code && <p className="text-xs text-gray-400 font-mono">{item.code}</p>}
                                 </td>
-                                <td className="py-2 px-3 text-right text-gray-400">{item.estimatedQty.toFixed(1)}</td>
+                                <td className="py-2 px-3 text-right text-gray-400">{fmtQty(item.estimatedQty)}</td>
                                 <td className="py-2 px-3 text-right">
                                   <input type="number" value={item.actualQty} step="0.5" min="0"
                                     onChange={e => updateItem(item.productId, 'actualQty', Number(e.target.value))}

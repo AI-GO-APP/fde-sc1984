@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../data/DataProvider';
 import DatePickerWithCounts from '../../components/DatePickerWithCounts';
+import { fmtQty } from '../../utils/displayHelpers';
 const Arrow = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>;
 const BoxIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>;
 export default function StockPage() {
@@ -50,7 +51,7 @@ export default function StockPage() {
                 <td className="py-2.5 px-4 font-medium">{p.name}</td>
                 <td className="py-2.5 px-4 text-right">{Number(p.standard_price||0)>0 ? `$${Number(p.standard_price).toLocaleString()}` : '—'}</td>
                 <td className="py-2.5 px-4 text-right font-bold text-primary">{Number(p.list_price||0)>0 ? `$${Number(p.list_price).toLocaleString()}` : '—'}</td>
-                <td className="py-2.5 px-4 text-right"><span className={`font-bold ${qty > 0 ? 'text-green-600' : 'text-gray-400'}`}>{qty > 0 ? qty.toFixed(1) : '0'}</span></td>
+                <td className="py-2.5 px-4 text-right"><span className={`font-bold ${qty > 0 ? 'text-green-600' : 'text-gray-400'}`}>{fmtQty(qty)}</span></td>
               </tr>);
               })}
             </tbody></table>
