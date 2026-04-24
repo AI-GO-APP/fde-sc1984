@@ -45,7 +45,7 @@ export default function CustomersPage() {
     try {
       const [custRes, empRes, tagRes, cfgRes] = await Promise.all([
         db.runAction('list_customers_for_me', {}),
-        db.runAction('list_employees', {}),
+        db.runAction('list_employees', { for_picker: true }),
         db.query('customer_tags'),
         db.runAction('system_config_get', { key: 'ordering.liff_url' }).catch(() => null),
       ]);

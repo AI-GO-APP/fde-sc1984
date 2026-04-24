@@ -25,8 +25,9 @@ export default function DashboardPage() {
     {step:'5',label:'配送管理',desc:'出貨追蹤',href:'/admin/daily/delivery',count:0},
   ];
   const settingsGroups: {title:string; items:{label:string;desc:string;href:string;disabled?:boolean}[]}[] = [
-    {title:'客戶', items:[
+    {title:'人員', items:[
       {label:'客戶管理', desc:'新增客戶、分店、聯絡人', href:'/admin/settings/customers'},
+      {label:'員工管理', desc:'查看員工、部門、帳號狀態', href:'/admin/settings/employees'},
     ]},
     {title:'商品設定', items:[
       {label:'產品管理', desc:'編輯產品分類', href:'/admin/settings/products'},
