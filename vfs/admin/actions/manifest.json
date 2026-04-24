@@ -1,1 +1,5 @@
-{}
+{
+  "get_config": {
+    "description": "回傳 runtime 設定：假日、截止時間、product_product 對應、參考價格（供 ordering app 呼叫）"
+  }
+}

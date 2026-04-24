@@ -5,6 +5,8 @@ import CartPage from "./pages/CartPage";
 import OrdersPage from "./pages/OrdersPage";
 import BottomNav from "./components/BottomNav";
 import * as db from "./db";
+import { Category } from "./pages/useCatalogData";
+import { Product } from "./pages/CatalogProductCard";
 
 function toYMD(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -53,16 +55,10 @@ function loadCart(): CartItem[] {
   } catch { return []; }
 }
 
-export interface AppUser {
-  id: string;
-  email: string;
-  display_name?: string;
-}
-
+export interface AppUser { id: string; email: string; display_name?: string; }
 export interface PriceEntry { price: number; date: string; }
 
 const VALID_PATHS = ["/order", "/cart", "/orders"];
-
 function getPath(): string {
   const h = window.location.hash.replace(/^#/, "");
   return VALID_PATHS.includes(h) ? h : "/order";
@@ -79,6 +75,8 @@ export default function App() {
   const [tmplToProd, setTmplToProd] = useState<Record<string, string>>({});
   const [priceMap, setPriceMap] = useState<Record<string, PriceEntry>>({});
   const [cutoffTime, setCutoffTime] = useState<string>("");
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [allTemplates, setAllTemplates] = useState<Product[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -98,54 +96,34 @@ export default function App() {
     setLoading(false);
   }, []);
 
-  // 登入後載入所有 runtime 資料
   useEffect(() => {
     if (!user) return;
-
-    // 計量單位（標準 Odoo 表，直接查）
-    db.query("uom_uom", { filters: [{ column: "active", op: "eq", value: true }] })
-      .then(rows => {
-        const map: Record<string, string> = {};
-        for (const u of Array.isArray(rows) ? rows : []) map[String(u.id)] = u.name;
-        setUomMap(map);
-      }).catch(() => {});
-
-    // x_ 自訂表 + product_product 對應 → 統一由 get_config action 取得
     db.runAction("get_config", {})
       .then((d: any) => {
-        // 假日
-        const dates = (Array.isArray(d.holidays) ? d.holidays : []).filter(Boolean);
-        const hset = new Set<string>(dates);
+        const hset = new Set<string>((Array.isArray(d.holidays) ? d.holidays : []).filter(Boolean));
         setHolidays(hset);
         setDeliveryDate(prev => hset.has(prev) ? getFirstAvailableDate(hset) : prev);
-
-        // 截止時間
         if (d.cutoff_time) setCutoffTime(String(d.cutoff_time));
-
-        // product_product 對應
         setTmplToProd(d.tmpl_to_prod ?? {});
-
-        // 參考價：price_log + prod_to_tmpl → 每個 tmplId 取最新
-        const prodToTmpl: Record<string, string> = d.prod_to_tmpl ?? {};
-        const latest: Record<string, PriceEntry> = {};
-        for (const log of Array.isArray(d.price_log) ? d.price_log : []) {
-          const prodId = String(log.product_product_id || "");
-          const tmplId = prodToTmpl[prodId];
-          if (!tmplId) continue;
-          const date = String(log.effective_date || "");
-          const price = Number(log.lst_price || 0);
-          if (!latest[tmplId] || date > latest[tmplId].date) {
-            latest[tmplId] = { price, date };
-          }
+        const pm: Record<string, PriceEntry> = {};
+        for (const [tmplId, entry] of Object.entries(d.price_map ?? {})) {
+          const e = entry as any;
+          pm[tmplId] = { price: Number(e.price ?? 0), date: String(e.date ?? "") };
         }
-        setPriceMap(latest);
+        setPriceMap(pm);
+      }).catch(() => {});
+
+    db.runAction("get_catalog", {})
+      .then((d: any) => {
+        setCategories(Array.isArray(d.categories) ? d.categories : []);
+        setAllTemplates(Array.isArray(d.templates) ? d.templates : []);
+        const map: Record<string, string> = {};
+        for (const u of Array.isArray(d.uoms) ? d.uoms : []) map[String(u.id)] = u.name;
+        setUomMap(map);
       }).catch(() => {});
   }, [user]);
 
-  const navigate = (path: string) => {
-    window.location.hash = path;
-    setCurrentPath(path);
-  };
+  const navigate = (path: string) => { window.location.hash = path; setCurrentPath(path); };
   useEffect(() => {
     const onHash = () => setCurrentPath(getPath());
     window.addEventListener("hashchange", onHash);
@@ -153,17 +131,11 @@ export default function App() {
   }, []);
 
   const handleLogin = (u: AppUser) => setUser(u);
-
   const handleLogout = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(CART_KEY);
+    localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(CART_KEY);
     (window as any).__APP_TOKEN__ = "";
-    setUser(null);
-    setCart([]);
-    setUomMap({});
-    setHolidays(new Set());
-    setPriceMap({});
-    navigate("/order");
+    setUser(null); setCart([]); setUomMap({}); setHolidays(new Set()); setPriceMap({});
+    setCategories([]); setAllTemplates([]); navigate("/order");
   };
 
   const addToCart = (productId: string, qty: number, delivDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => {
@@ -190,37 +162,15 @@ export default function App() {
   };
 
   const clearCartDate = (date: string) => setCart(prev => prev.filter(i => i.deliveryDate !== date));
-
-  useEffect(() => {
-    localStorage.setItem(CART_KEY, JSON.stringify(cart));
-  }, [cart]);
-
+  useEffect(() => { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }, [cart]);
   const cartCount = new Set(cart.map(i => i.deliveryDate)).size;
 
-  if (loading) return (
-    <div className="loading-screen">
-      <div className="spinner" />
-      <p>載入中...</p>
-    </div>
-  );
-
+  if (loading) return <div className="loading-screen"><div className="spinner" /><p>載入中...</p></div>;
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
   const pages: Record<string, React.ReactNode> = {
-    "/order": (
-      <CatalogPage
-        cart={cart} addToCart={addToCart} setCartExact={setCartExact}
-        uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate}
-        holidays={holidays} tmplToProd={tmplToProd} priceMap={priceMap}
-      />
-    ),
-    "/cart": (
-      <CartPage
-        cart={cart} addToCart={addToCart} setCartExact={setCartExact}
-        clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate}
-        uomMap={uomMap} user={user} priceMap={priceMap}
-      />
-    ),
+    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} tmplToProd={tmplToProd} priceMap={priceMap} allTemplates={allTemplates} categories={categories} />,
+    "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} />,
     "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
   };
 

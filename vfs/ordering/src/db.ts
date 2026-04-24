@@ -1,6 +1,5 @@
-/* @ai-go-sdk — ordering app proxy + action */
+/* @ai-go-sdk — ordering app: ALL db operations via server-side action */
 const API_BASE = (window as any).__API_BASE__ || '/api/v1';
-const proxyBase = API_BASE + '/ext/proxy/';
 
 function _h(): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -9,49 +8,7 @@ function _h(): Record<string, string> {
   return h;
 }
 
-async function _r(resp: Response): Promise<any> {
-  if (!resp.ok) {
-    const b = await resp.json().catch(() => ({}));
-    throw new Error(b.detail || 'API Error (' + resp.status + ')');
-  }
-  return resp.json();
-}
-
-/** 查詢引用表（無 filter → GET；有 filter → POST /query） */
-export async function query(table: string, opts?: {
-  limit?: number; offset?: number;
-  filters?: { column: string; op: string; value?: any }[];
-}): Promise<any[]> {
-  if (opts?.filters?.length) {
-    const body: any = { filters: opts.filters };
-    if (opts.limit) body.limit = opts.limit;
-    if (opts.offset) body.offset = opts.offset;
-    return _r(await fetch(proxyBase + table + '/query', {
-      method: 'POST', headers: _h(), credentials: 'include', body: JSON.stringify(body),
-    }));
-  }
-  const p = new URLSearchParams();
-  if (opts?.limit) p.set('limit', String(opts.limit));
-  if (opts?.offset) p.set('offset', String(opts.offset));
-  const qs = p.toString() ? '?' + p.toString() : '';
-  return _r(await fetch(proxyBase + table + qs, { headers: _h(), credentials: 'include' }));
-}
-
-/** 新增 */
-export async function insert(table: string, data: Record<string, any>): Promise<any> {
-  return _r(await fetch(proxyBase + table, {
-    method: 'POST', headers: _h(), credentials: 'include', body: JSON.stringify(data),
-  }));
-}
-
-/** 更新（PATCH） */
-export async function update(table: string, id: string, data: Record<string, any>): Promise<any> {
-  return _r(await fetch(proxyBase + table + '/' + id, {
-    method: 'PATCH', headers: _h(), credentials: 'include', body: JSON.stringify(data),
-  }));
-}
-
-/** 呼叫後端 Action（外部 app: /ext/actions/run/{name}；內部: /actions/run/{appId}/{name}） */
+/** 呼叫後端 Action（所有資料庫操作的唯一入口） */
 export async function runAction(actionName: string, params: Record<string, any> = {}): Promise<any> {
   const appId = (window as any).__APP_ID__ || '';
   const isExternal = !!(window as any).__IS_EXTERNAL__;
@@ -68,5 +25,5 @@ export async function runAction(actionName: string, params: Record<string, any> 
   }
   const result = await resp.json();
   if (result?.status === 'error') throw new Error(result.message || 'Action Error');
-  return result.data ?? result;
+  return result.result ?? result.data ?? result;
 }

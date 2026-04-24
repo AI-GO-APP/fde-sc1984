@@ -3,12 +3,21 @@
     "description": "健康檢查"
   },
   "get_config": {
-    "description": "回傳 runtime 設定：假日、截止時間、參考價格日誌、product_product 對應"
+    "description": "回傳 runtime 設定：假日、截止時間、product_product 對應、參考價格"
+  },
+  "get_catalog": {
+    "description": "回傳商品目錄：product_templates、product_categories、uom_uom"
+  },
+  "get_orders": {
+    "description": "回傳指定 user_email 的所有訂單（含明細）"
   },
   "place_order": {
     "description": "客戶下單：建立銷貨單與明細行"
   },
   "update_order_lines": {
     "description": "修改訂單明細數量"
+  },
+  "test_query_object": {
+    "description": "測試 query_object API"
   }
 }

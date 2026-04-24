@@ -33,5 +33,8 @@ python3 vfs/scripts/deploy_ordering.py
 
 - **前端不准寫死任何資料**，所有資料一律 runtime 從資料庫讀取
 - Admin：Odoo 表透過 `/proxy/{APP_ID}/`，custom table 由 `db.ts` 動態查 UUID
-- Ordering：Odoo 表透過 `/ext/proxy/`，config/假日/價格由 `get_config` action 提供
+- **Ordering：所有資料庫操作一律透過 server-side action（Python ctx.db），禁止前端直接呼叫 `/ext/proxy/`**
+  - `/ext/proxy/` 對 x_ 自訂表及 `product_product` 均回傳 500
+  - action ctx.db 支援所有表，包含 x_ 前綴的 Odoo 自訂模型
+  - 各表實際欄位名稱與 action 分工見 `.agent/skills/ordering-db-access.md`
 - deploy script 只負責上傳 VFS，不拉任何資料
