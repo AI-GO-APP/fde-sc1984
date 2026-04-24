@@ -26,12 +26,12 @@ interface Props {
   uomMap: Record<string, string>;
   deliveryDate: string; setDeliveryDate: (d: string) => void;
   holidays: Set<string>; tmplToProd: Record<string, string>; priceMap: Record<string, PriceEntry>;
-  allTemplates: Product[]; categories: Category[];
+  allTemplates: Product[]; categories: Category[]; configLoaded: boolean;
 }
 
-export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, tmplToProd, priceMap, allTemplates, categories }: Props) {
+export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, tmplToProd, priceMap, allTemplates, categories, configLoaded }: Props) {
   const { activeCat, setActiveCat, search, handleSearch, visibleProducts } = useCatalogData(allTemplates, categories);
-  const availableDates = getAvailableDates(holidays);
+  const availableDates = configLoaded ? getAvailableDates(holidays) : [];
 
   return (
     <div className="catalog-page">

@@ -77,6 +77,7 @@ export default function App() {
   const [cutoffTime, setCutoffTime] = useState<string>("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [allTemplates, setAllTemplates] = useState<Product[]>([]);
+  const [configLoaded, setConfigLoaded] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -87,7 +88,7 @@ export default function App() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(decoded));
         if (decoded.access_token) (window as any).__APP_TOKEN__ = decoded.access_token;
         if (decoded.user) setUser(decoded.user);
-        window.history.replaceState({}, "", window.location.pathname);
+        window.history.replaceState({}, "", window.location.pathname + window.location.hash);
       } catch {}
     } else {
       const u = loadUser();
@@ -111,7 +112,8 @@ export default function App() {
           pm[tmplId] = { price: Number(e.price ?? 0), date: String(e.date ?? "") };
         }
         setPriceMap(pm);
-      }).catch(() => {});
+        setConfigLoaded(true);
+      }).catch(() => { setConfigLoaded(true); });
 
     db.runAction("get_catalog", {})
       .then((d: any) => {
@@ -169,7 +171,7 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
   const pages: Record<string, React.ReactNode> = {
-    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} tmplToProd={tmplToProd} priceMap={priceMap} allTemplates={allTemplates} categories={categories} />,
+    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} tmplToProd={tmplToProd} priceMap={priceMap} allTemplates={allTemplates} categories={categories} configLoaded={configLoaded} />,
     "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} />,
     "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
   };
