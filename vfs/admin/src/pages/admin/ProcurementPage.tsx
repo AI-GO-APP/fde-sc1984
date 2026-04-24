@@ -13,7 +13,7 @@ interface PricingItem {
   productId: string; templateId: string; productName: string; code: string;
   supplierId: string; supplierName: string;
   estimatedQty: number; actualQty: number;
-  purchasePrice: number; sellingPrice: number;
+  purchasePrice: number; weight: number; sellingPrice: number;
   state: 'pending' | 'priced' | 'stocked';
 }
 
@@ -88,12 +88,15 @@ export default function ProcurementPage() {
       if (existing) { existing.estimatedQty += Number(l.product_uom_qty || 0); }
       else {
         const log = logMap[pid];
-        const sellingPrice  = Number(log?.lst_price || 0);
-        const purchasePrice = sellingPrice > 0 ? Math.round(sellingPrice / 1.3 * 100) / 100 : 0;
+        const purchasePrice = Number(log?.standard_price || 0);
+        const logSelling    = Number(log?.lst_price || 0);
+        // 從已存的兩個價格反推加權，預設 130（即 1.3 倍）
+        const weight = (purchasePrice > 0 && logSelling > 0) ? Math.round(logSelling / purchasePrice * 100) : 130;
+        const sellingPrice = purchasePrice > 0 ? Math.ceil(purchasePrice * weight / 100) : logSelling;
         // 實際量：優先取當日 price log 的 qty_delivered（有日期語意），否則用估計量
         const todayLog = todayLogMap[pid];
         const actualQty = todayLog?.qty_delivered != null ? Number(todayLog.qty_delivered) : Number(l.product_uom_qty || 0);
-        itemMap.set(pid, { productId: pid, templateId: rawId, productName: prod?.name || l.name || '—', code: prod?.default_code || '', supplierId: supId, supplierName: suppliers[supId]?.name || '未指定供應商', estimatedQty: Number(l.product_uom_qty || 0), actualQty, purchasePrice, sellingPrice, state: log ? 'priced' : 'pending' });
+        itemMap.set(pid, { productId: pid, templateId: rawId, productName: prod?.name || l.name || '—', code: prod?.default_code || '', supplierId: supId, supplierName: suppliers[supId]?.name || '未指定供應商', estimatedQty: Number(l.product_uom_qty || 0), actualQty, purchasePrice, weight, sellingPrice, state: log ? 'priced' : 'pending' });
       }
     }
     setItems(Array.from(itemMap.values()));
@@ -134,8 +137,10 @@ export default function ProcurementPage() {
     setItems(prev => prev.map(i => {
       if (i.productId !== pid) return i;
       const updated = {...i, [field]: value};
-      if (field === 'sellingPrice') {
-        updated.purchasePrice = value > 0 ? Math.round(value / 1.3 * 100) / 100 : 0;
+      if (field === 'purchasePrice' || field === 'weight') {
+        const cost = field === 'purchasePrice' ? value : updated.purchasePrice;
+        const w    = field === 'weight'         ? value : updated.weight;
+        updated.sellingPrice = (cost > 0 && w > 0) ? Math.ceil(cost * w / 100) : 0;
       }
       return updated;
     }));
@@ -177,11 +182,10 @@ export default function ProcurementPage() {
     const item = items.find(i => i.productId === pid);
     if (!item || item.sellingPrice <= 0) return;
     setSaving(true);
-    const stdPrice = Math.round(item.sellingPrice / 1.3 * 100) / 100;
     const _qid = (v: any) => Array.isArray(v) ? String(v[0]) : String(v || '');
     try {
       // 寫入價格稽核 log（含當日實際進貨量）
-      await db.insertCustom(PRICE_LOG_UUID, { product_product_id: pid, lst_price: item.sellingPrice, standard_price: stdPrice, effective_date: selectedDate, qty_delivered: item.actualQty });
+      await db.insertCustom(PRICE_LOG_UUID, { product_product_id: pid, lst_price: item.sellingPrice, standard_price: item.purchasePrice, effective_date: selectedDate, qty_delivered: item.actualQty });
       // 同步選定日期配送的訂單明細售價（l.product_id 可能是 template UUID，需比對後轉換）
       const matchingLines = orderLines.filter((l: any) => {
         const lineRaw = _qid(l.product_id) || _qid(l.product_template_id);
@@ -212,10 +216,9 @@ export default function ProcurementPage() {
     const _qid = (v: any) => Array.isArray(v) ? String(v[0]) : String(v || '');
     const locId = await _getLocId();
     for (const item of priceable) {
-      const stdPrice = Math.round(item.sellingPrice / 1.3 * 100) / 100;
       try {
         // 寫入價格稽核 log（含當日實際進貨量）
-        await db.insertCustom(PRICE_LOG_UUID, { product_product_id: item.productId, lst_price: item.sellingPrice, standard_price: stdPrice, effective_date: selectedDate, qty_delivered: item.actualQty });
+        await db.insertCustom(PRICE_LOG_UUID, { product_product_id: item.productId, lst_price: item.sellingPrice, standard_price: item.purchasePrice, effective_date: selectedDate, qty_delivered: item.actualQty });
         // 同步選定日期配送的訂單明細售價（l.product_id 可能是 template UUID）
         const matchingLines = orderLines.filter((l: any) => {
           const lineRaw = _qid(l.product_id) || _qid(l.product_template_id);
@@ -298,8 +301,9 @@ export default function ProcurementPage() {
                           <th className="py-2 px-3 text-left font-medium">品名</th>
                           <th className="py-2 px-3 text-right font-medium w-20">預估量</th>
                           <th className="py-2 px-3 text-right font-medium w-20">實際量</th>
-                          <th className="py-2 px-3 text-right font-medium w-24">售價</th>
-                          <th className="py-2 px-3 text-right font-medium w-20">成本</th>
+                          <th className="py-2 px-3 text-right font-medium w-24">成本</th>
+                          <th className="py-2 px-3 text-right font-medium w-16">加權</th>
+                          <th className="py-2 px-3 text-right font-medium w-20">售價</th>
                           <th className="py-2 px-3 text-right font-medium w-24">小計</th>
                           <th className="py-2 px-3 text-center font-medium w-20">操作</th>
                         </tr></thead>
@@ -328,12 +332,17 @@ export default function ProcurementPage() {
                                     className="w-16 text-right py-1 px-1.5 border border-gray-200 rounded text-sm" />
                                 </td>
                                 <td className="py-2 px-3 text-right">
-                                  <input type="number" value={item.sellingPrice || ''} step="1" min="0" placeholder="$"
-                                    onChange={e => updateItem(item.productId, 'sellingPrice', Number(e.target.value))}
+                                  <input type="number" value={item.purchasePrice || ''} step="0.5" min="0" placeholder="$"
+                                    onChange={e => updateItem(item.productId, 'purchasePrice', Number(e.target.value))}
                                     className="w-20 text-right py-1 px-1.5 border border-gray-200 rounded text-sm" />
                                 </td>
-                                <td className="py-2 px-3 text-right text-gray-400 text-sm">
-                                  {item.purchasePrice > 0 ? `$${item.purchasePrice.toFixed(0)}` : '—'}
+                                <td className="py-2 px-3 text-right">
+                                  <input type="number" value={item.weight} step="1" min="1"
+                                    onChange={e => updateItem(item.productId, 'weight', Number(e.target.value))}
+                                    className="w-14 text-right py-1 px-1.5 border border-gray-200 rounded text-sm" />
+                                </td>
+                                <td className="py-2 px-3 text-right text-gray-700 text-sm font-medium">
+                                  {item.sellingPrice > 0 ? `$${item.sellingPrice}` : '—'}
                                 </td>
                                 <td className="py-2 px-3 text-right font-medium">
                                   {subtotal > 0 ? `$${Math.round(subtotal).toLocaleString()}` : '—'}
@@ -349,7 +358,7 @@ export default function ProcurementPage() {
                           })}
                         </tbody>
                         <tfoot><tr className="bg-gray-50 font-bold border-t border-gray-200">
-                          <td className="py-2 px-3 text-right" colSpan={6}>小計</td>
+                          <td className="py-2 px-3 text-right" colSpan={7}>小計</td>
                           <td className="py-2 px-3 text-right text-primary">${Math.round(groupTotal).toLocaleString()}</td>
                           <td></td>
                         </tr></tfoot>
