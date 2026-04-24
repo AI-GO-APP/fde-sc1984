@@ -8,7 +8,7 @@ type Employee = {
 };
 type Dept = { id: string; name: string };
 
-const EMPTY_FORM = { name: '', work_email: '', department_id: '', with_invite: false };
+const EMPTY_FORM = { name: '', work_email: '', department_id: '' };
 
 export default function EmployeesPage() {
   const nav = useNavigate();
@@ -21,6 +21,8 @@ export default function EmployeesPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  // inviteState: per-employee { status: 'idle' | 'sending' | 'sent' | 'error', msg? }
+  const [inviteState, setInviteState] = useState<Record<string, { status: string; msg?: string }>>({});
 
   const load = async () => {
     setLoading(true); setError('');
@@ -47,11 +49,10 @@ export default function EmployeesPage() {
 
   const f = (k: keyof typeof EMPTY_FORM) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm(prev => ({ ...prev, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value }));
+      setForm(prev => ({ ...prev, [k]: e.target.value }));
 
   const submit = async () => {
     if (!form.name.trim()) { setFormError('姓名為必填'); return; }
-    if (form.with_invite && !form.work_email.trim()) { setFormError('勾選給予帳號時 Email 為必填'); return; }
     setSaving(true); setFormError('');
     try {
       await db.runAction('create_employee', {
@@ -59,9 +60,6 @@ export default function EmployeesPage() {
         work_email: form.work_email.trim(),
         department_id: form.department_id,
       });
-      if (form.with_invite && form.work_email.trim()) {
-        await db.sendInvitation(form.work_email.trim());
-      }
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
       await load();
@@ -69,6 +67,19 @@ export default function EmployeesPage() {
       setFormError(e?.message || '新增失敗');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendInvite = async (emp: Employee) => {
+    if (!emp.work_email) return;
+    setInviteState(prev => ({ ...prev, [emp.id]: { status: 'sending' } }));
+    try {
+      await db.sendInvitation(emp.work_email);
+      setInviteState(prev => ({ ...prev, [emp.id]: { status: 'sent' } }));
+      // 重新載入，確認是否已建立 user
+      await load();
+    } catch (e: any) {
+      setInviteState(prev => ({ ...prev, [emp.id]: { status: 'error', msg: e?.message || '寄送失敗' } }));
     }
   };
 
@@ -116,23 +127,46 @@ export default function EmployeesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(e => (
-                    <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-800">
-                        {e.name}
-                        {e.job_title && <span className="ml-2 text-xs text-gray-400">{e.job_title}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">{e.work_email || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600">{e.department_name || '—'}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                          e.has_account ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
-                        }`}>
-                          {e.has_account ? '有' : '無'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map(e => {
+                    const inv = inviteState[e.id];
+                    return (
+                      <tr key={e.id} className="border-t border-gray-50 hover:bg-gray-50">
+                        <td className="px-4 py-3 font-medium text-gray-800">
+                          {e.name}
+                          {e.job_title && <span className="ml-2 text-xs text-gray-400">{e.job_title}</span>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{e.work_email || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600">{e.department_name || '—'}</td>
+                        <td className="px-4 py-3 text-center">
+                          {e.has_account ? (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                              已建立
+                            </span>
+                          ) : (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-400">
+                                未建立
+                              </span>
+                              {e.work_email && (
+                                inv?.status === 'sent' ? (
+                                  <span className="text-xs text-blue-500">✓ 邀請已寄出</span>
+                                ) : inv?.status === 'error' ? (
+                                  <span className="text-xs text-red-500">{inv.msg}</span>
+                                ) : (
+                                  <button
+                                    onClick={() => sendInvite(e)}
+                                    disabled={inv?.status === 'sending'}
+                                    className="text-xs text-blue-600 hover:text-blue-800 underline disabled:opacity-50">
+                                    {inv?.status === 'sending' ? '寄送中...' : '寄送邀請'}
+                                  </button>
+                                )
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -162,6 +196,7 @@ export default function EmployeesPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                 <input type="email" value={form.work_email} onChange={f('work_email')} placeholder="name@company.com"
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
+                <p className="text-xs text-gray-400 mt-1">填入後可在員工列表寄送系統邀請信，對方設定密碼後即可登入</p>
               </div>
 
               <div>
@@ -172,16 +207,6 @@ export default function EmployeesPage() {
                   {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                 </select>
               </div>
-
-              <label className="flex items-start gap-3 cursor-pointer select-none">
-                <input type="checkbox" checked={form.with_invite}
-                  onChange={e => setForm(prev => ({ ...prev, with_invite: e.target.checked }))}
-                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500" />
-                <div>
-                  <p className="text-sm font-medium text-gray-800">給予系統帳號</p>
-                  <p className="text-xs text-gray-400 mt-0.5">勾選後發送邀請信至上方 Email，對方點連結設定密碼即可登入</p>
-                </div>
-              </label>
 
               {formError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">{formError}</div>
