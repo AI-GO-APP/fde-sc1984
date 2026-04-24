@@ -10,7 +10,7 @@ const PricingIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" hei
 const PackageIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>;
 
 interface PricingItem {
-  productId: string; productName: string; code: string;
+  productId: string; templateId: string; productName: string; code: string;
   supplierId: string; supplierName: string;
   estimatedQty: number; actualQty: number;
   purchasePrice: number; sellingPrice: number;
@@ -24,6 +24,8 @@ export default function ProcurementPage() {
   const [expanded, setExpanded] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [priceLogs, setPriceLogs] = useState<any[]>([]);
+  const [assignModal, setAssignModal] = useState<{ productId: string; templateId: string; productName: string } | null>(null);
+  const [assignSupplierId, setAssignSupplierId] = useState('');
 
   const PRICE_LOG_UUID = '390d4f0b-9a2b-4131-a35b-67fce21286be';
 
@@ -91,7 +93,7 @@ export default function ProcurementPage() {
         // 實際量：優先取當日 price log 的 qty_delivered（有日期語意），否則用估計量
         const todayLog = todayLogMap[pid];
         const actualQty = todayLog?.qty_delivered != null ? Number(todayLog.qty_delivered) : Number(l.product_uom_qty || 0);
-        itemMap.set(pid, { productId: pid, productName: prod?.name || l.name || '—', code: prod?.default_code || '', supplierId: supId, supplierName: suppliers[supId]?.name || '未指定供應商', estimatedQty: Number(l.product_uom_qty || 0), actualQty, purchasePrice, sellingPrice, state: log ? 'priced' : 'pending' });
+        itemMap.set(pid, { productId: pid, templateId: rawId, productName: prod?.name || l.name || '—', code: prod?.default_code || '', supplierId: supId, supplierName: suppliers[supId]?.name || '未指定供應商', estimatedQty: Number(l.product_uom_qty || 0), actualQty, purchasePrice, sellingPrice, state: log ? 'priced' : 'pending' });
       }
     }
     setItems(Array.from(itemMap.values()));
@@ -105,6 +107,28 @@ export default function ProcurementPage() {
     list.push(item);
     groups.set(item.supplierId, list);
   }
+
+  const assignSupplier = async () => {
+    if (!assignModal || !assignSupplierId) return;
+    const prod = products.find(p => p.id === assignModal.templateId);
+    const currentCd = prod?.custom_data || {};
+    setSaving(true);
+    try {
+      await db.update('product_templates', assignModal.templateId, {
+        custom_data: { ...currentCd, default_supplier_id: assignSupplierId }
+      });
+      const sup = suppliers[assignSupplierId];
+      setItems(prev => prev.map(i =>
+        i.productId === assignModal.productId
+          ? { ...i, supplierId: assignSupplierId, supplierName: sup?.name || '—' }
+          : i
+      ));
+      setExpanded(prev => prev.includes(assignSupplierId) ? prev : [...prev, assignSupplierId]);
+    } catch(e: any) { console.error('指定供應商失敗:', e.message); }
+    setSaving(false);
+    setAssignModal(null);
+    setAssignSupplierId('');
+  };
 
   const updateItem = (pid: string, field: string, value: number) => {
     setItems(prev => prev.map(i => {
@@ -259,7 +283,7 @@ export default function ProcurementPage() {
                 <div key={sid} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <div role="button" onClick={() => toggleGroup(sid)} className="w-full px-4 py-4 flex justify-between items-center bg-white hover:bg-gray-50 cursor-pointer">
                     <div className="text-left">
-                      <p className="font-bold text-gray-900">{sup?.name || sid}</p>
+                      <p className="font-bold text-gray-900">{sup?.name || (sid === 'unknown' ? '未指定供應商' : sid)}</p>
                       <p className="text-sm text-gray-400">{sup?.ref ? `${sup.ref} · ` : ''}{groupItems.length} 品項 · {groupPriced}/{groupItems.length} 已定價</p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -286,7 +310,15 @@ export default function ProcurementPage() {
                             return (
                               <tr key={item.productId} className={`border-b border-gray-50 ${isPriced ? 'bg-green-50' : ''}`}>
                                 <td className="py-2 px-3">
-                                  <p className="font-medium">{item.productName}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="font-medium">{item.productName}</p>
+                                    {item.supplierId === 'unknown' && (
+                                      <button
+                                        onClick={() => { setAssignModal({ productId: item.productId, templateId: item.templateId, productName: item.productName }); setAssignSupplierId(''); }}
+                                        className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 whitespace-nowrap"
+                                      >指定供應商</button>
+                                    )}
+                                  </div>
                                   {item.code && <p className="text-xs text-gray-400 font-mono">{item.code}</p>}
                                 </td>
                                 <td className="py-2 px-3 text-right text-gray-400">{item.estimatedQty.toFixed(1)}</td>
@@ -330,6 +362,32 @@ export default function ProcurementPage() {
           </div>
         )}
       </div>
+      {assignModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-80">
+            <h3 className="font-bold text-gray-900 mb-1">指定供應商</h3>
+            <p className="text-sm text-gray-500 mb-4">{assignModal.productName}</p>
+            <select
+              value={assignSupplierId}
+              onChange={e => setAssignSupplierId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4"
+            >
+              <option value="">請選擇供應商</option>
+              {Object.values(suppliers).map((s: any) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setAssignModal(null)} className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700">取消</button>
+              <button
+                onClick={assignSupplier}
+                disabled={!assignSupplierId || saving}
+                className="px-4 py-1.5 text-sm bg-primary text-white rounded-lg disabled:opacity-40 hover:bg-green-700"
+              >確認</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
