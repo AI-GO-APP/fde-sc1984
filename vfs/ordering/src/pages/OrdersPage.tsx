@@ -125,8 +125,8 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
     const delivery = parseDeliveryDate(o.note || "", lines);
     const orderDate = (o.date_order || "").slice(0, 10);
     const remark = parseNote(o.note || "");
-    const rawTotal = typeof o.amount_total === "number" && o.amount_total > 0
-      ? o.amount_total : lines.reduce((sum, l) => sum + (Number(l.price_unit)||0) * (Number(l.product_uom_qty)||0), 0);
+    const rawTotal = Number(o.amount_total) > 0
+      ? Number(o.amount_total) : lines.reduce((sum, l) => sum + (Number(l.price_unit)||0) * (Number(l.product_uom_qty)||0), 0);
     const total = rawTotal > 0 ? rawTotal.toLocaleString("zh-TW", { minimumFractionDigits: 0 }) : null;
     const isEditing = editOrderId === o.id;
     const editable = canEditOrder(o, cutoffTime, lines);
@@ -160,7 +160,7 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
                     onBlur={e => setEditQtys(prev => ({ ...prev, [l.id]: parseFloat(e.target.value) || 0 }))}
                     style={{ width:"64px", padding:"2px 6px", border:"1px solid #d1d5db", borderRadius:"4px", fontSize:"14px", textAlign:"right" }} />
                 ) : (l.product_uom_qty ?? "—")}</td>
-                <td>{typeof l.price_unit === "number" ? `$${l.price_unit.toLocaleString()}` : "—"}</td>
+                <td>{Number(l.price_unit) > 0 ? `$${Number(l.price_unit).toLocaleString()}` : "—"}</td>
               </tr>
             ))}</tbody>
           </table>
