@@ -27,9 +27,12 @@ export default function EmployeesPage() {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const res = await db.runAction('list_employees', { for_picker: false });
+      const [res, depts] = await Promise.all([
+        db.runAction('list_employees', { for_picker: false }),
+        db.query('hr_departments'),
+      ]);
       setEmployees(res?.employees || []);
-      setDepartments(res?.departments || []);
+      setDepartments((depts || []).map((d: any) => ({ id: String(d.id), name: String(d.name || '') })));
     } catch (e: any) {
       setError(e?.message || '載入失敗');
     } finally {
