@@ -19,5 +19,8 @@
   },
   "seed_departments": {
     "description": "一次性種入業務、採購、配送三個 hr_departments（已存在者跳過）"
+  },
+  "create_product": {
+    "description": "新增產品（product_templates）：name（必填）、default_code、categ_id，預設 sale_ok=false"
   }
 }

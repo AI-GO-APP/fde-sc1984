@@ -20,7 +20,6 @@ function AddProductModal({ cats, onClose, onDone }: {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [catId, setCatId] = useState('');
-  const [listPrice, setListPrice] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -28,14 +27,10 @@ function AddProductModal({ cats, onClose, onDone }: {
     if (!name.trim()) { setError('品名為必填'); return; }
     setSaving(true); setError('');
     try {
-      await db.insert('product_templates', {
-        name: name.trim(),
-        ...(code.trim() ? { default_code: code.trim() } : {}),
-        ...(catId ? { categ_id: catId } : {}),
-        ...(listPrice ? { list_price: Number(listPrice) } : {}),
-        sale_ok: false,
-        active: true,
-      });
+      const params: Record<string, any> = { name: name.trim() };
+      if (code.trim()) params.default_code = code.trim();
+      if (catId) params.categ_id = catId;
+      await db.runAction('create_product', params);
       onDone(catId);
     } catch (e: any) {
       setError(e.message || '新增失敗');
@@ -67,12 +62,7 @@ function AddProductModal({ cats, onClose, onDone }: {
               {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">售價</label>
-            <input type="number" value={listPrice} onChange={e => setListPrice(e.target.value)} placeholder="選填" min="0" step="1"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+{error && <p className="text-red-500 text-sm">{error}</p>}
         </div>
         <p className="text-xs text-gray-400 mt-3">新增後預設為「下架」，可至列表手動上架。</p>
         <div className="flex gap-3 mt-4">
