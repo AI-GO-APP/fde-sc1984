@@ -21,15 +21,15 @@ function fmtDateChip(ymd: string): string {
 
 interface Props {
   cart: CartItem[];
-  addToCart: (id: string, qty: number, deliveryDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => void;
+  addToCart: (id: string, qty: number, deliveryDate: string) => void;
   setCartExact: (id: string, qty: number, deliveryDate: string) => void;
   uomMap: Record<string, string>;
   deliveryDate: string; setDeliveryDate: (d: string) => void;
-  holidays: Set<string>; tmplToProd: Record<string, string>; priceMap: Record<string, PriceEntry>;
+  holidays: Set<string>; priceMap: Record<string, PriceEntry>;
   allTemplates: Product[]; categories: Category[]; configLoaded: boolean;
 }
 
-export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, tmplToProd, priceMap, allTemplates, categories, configLoaded }: Props) {
+export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, priceMap, allTemplates, categories, configLoaded }: Props) {
   const { activeCat, setActiveCat, search, handleSearch, visibleProducts } = useCatalogData(allTemplates, categories);
   const availableDates = configLoaded ? getAvailableDates(holidays) : [];
 
@@ -62,7 +62,7 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
           ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
           : visibleProducts.length === 0
             ? <p className="empty-msg">{search ? "找不到符合的商品" : "沒有商品"}</p>
-            : visibleProducts.map(p => <ProductCard key={p.id} p={p} cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} tmplToProd={tmplToProd} priceMap={priceMap} />)
+            : visibleProducts.map(p => <ProductCard key={p.id} p={p} cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} priceMap={priceMap} />)
         }
       </div>
     </div>

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import * as db from "../db";
 import { CartItem, AppUser, PriceEntry } from "../App";
+import { Product } from "./CatalogProductCard";
 import CartDateGroup from "./CartDateGroup";
 
 function Toast({ msg, isError }: { msg: string; isError?: boolean }) {
@@ -17,12 +18,19 @@ interface Props {
   uomMap: Record<string, string>;
   user: AppUser;
   priceMap: Record<string, PriceEntry>;
+  allTemplates: Product[];
 }
 
-export default function CartPage({ cart, addToCart, setCartExact, clearCartDate, onNavigate, setDeliveryDate, uomMap, user, priceMap }: Props) {
+export default function CartPage({ cart, addToCart, setCartExact, clearCartDate, onNavigate, setDeliveryDate, uomMap, user, priceMap, allTemplates }: Props) {
   const [groupNotes, setGroupNotes] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; error: boolean } | null>(null);
+
+  const tmplMap = useMemo(() => {
+    const m: Record<string, Product> = {};
+    for (const t of allTemplates) m[t.id] = t;
+    return m;
+  }, [allTemplates]);
 
   const showToast = (msg: string, error = false) => {
     setToast({ msg, error });
@@ -52,7 +60,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
         note: groupNotes[date] || "",
         items: items.map(item => ({
           product_template_id: item.productId,
-          product_name: item.name ?? "",
+          product_name: tmplMap[item.productId]?.name ?? "",
           qty: item.qty,
           price_unit: priceMap[item.productId]?.price ?? 0,
         })),
@@ -81,7 +89,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
     <div className="cart-page">
       {toast && <Toast msg={toast.msg} isError={toast.error} />}
       {dateGroups.map(({ date, items }) => (
-        <CartDateGroup key={date} date={date} items={items} priceMap={priceMap} uomMap={uomMap}
+        <CartDateGroup key={date} date={date} items={items} priceMap={priceMap} uomMap={uomMap} tmplMap={tmplMap}
           addToCart={addToCart} setCartExact={setCartExact}
           note={groupNotes[date] || ""} onNoteChange={n => setGroupNotes(prev => ({ ...prev, [date]: n }))}
           isSubmitting={submitting === date} onSubmit={() => handleSubmit(date)}

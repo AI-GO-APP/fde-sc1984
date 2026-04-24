@@ -1,6 +1,7 @@
 import React from "react";
 import { Minus, Plus, Trash2, Send } from "lucide-react";
 import { CartItem, PriceEntry } from "../App";
+import { Product } from "./CatalogProductCard";
 
 const DAY_NAMES = ["日","一","二","三","四","五","六"];
 function fmtDate(ymd: string): string {
@@ -12,6 +13,7 @@ function fmtDate(ymd: string): string {
 interface Props {
   date: string; items: CartItem[];
   priceMap: Record<string, PriceEntry>; uomMap: Record<string, string>;
+  tmplMap: Record<string, Product>;
   addToCart: (id: string, qty: number, date: string) => void;
   setCartExact: (id: string, qty: number, date: string) => void;
   note: string; onNoteChange: (n: string) => void;
@@ -19,7 +21,7 @@ interface Props {
   setDeliveryDate: (d: string) => void; onNavigate: (p: string) => void;
 }
 
-export default function CartDateGroup({ date, items, priceMap, uomMap, addToCart, setCartExact, note, onNoteChange, isSubmitting, onSubmit, setDeliveryDate, onNavigate }: Props) {
+export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, addToCart, setCartExact, note, onNoteChange, isSubmitting, onSubmit, setDeliveryDate, onNavigate }: Props) {
   const groupTotal = items.reduce((sum, item) => sum + (priceMap[item.productId]?.price ?? 0) * item.qty, 0);
   const hasPrice = items.some(item => !!(priceMap[item.productId]));
   return (
@@ -30,13 +32,14 @@ export default function CartDateGroup({ date, items, priceMap, uomMap, addToCart
       </div>
       <div className="cart-list" style={{ margin: 0, borderRadius: 0 }}>
         {items.map(item => {
+          const tmpl = tmplMap[item.productId];
           const pi = priceMap[item.productId];
           const subtotal = pi ? pi.price * item.qty : null;
           return (
             <div key={item.productId} className="cart-item" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
               <div className="cart-item-info">
-                <span className="product-code">{item.defaultCode || ""}</span>
-                <span className="product-name">{item.name || item.productId}</span>
+                <span className="product-code">{tmpl?.default_code || ""}</span>
+                <span className="product-name">{tmpl?.name || item.productId}</span>
                 {pi && subtotal !== null && (
                   <span className="cart-price-summary">
                     ${pi.price} × {item.qty} = <strong>${Math.round(subtotal * 100) / 100}</strong>
@@ -48,7 +51,7 @@ export default function CartDateGroup({ date, items, priceMap, uomMap, addToCart
                 <input type="number" step="0.1" className="qty-input" value={item.qty}
                   onChange={e => setCartExact(item.productId, parseFloat(e.target.value), date)} />
                 <button className="qty-btn add" onClick={() => addToCart(item.productId, 1, date)}><Plus size={14} /></button>
-                <span className="qty-unit">{uomMap[item.uomId ?? ""] || "件"}</span>
+                <span className="qty-unit">{uomMap[tmpl?.uom_id ?? ""] || "件"}</span>
                 <button className="qty-btn" style={{ border: "1px solid #ef4444", color: "#ef4444" }}
                   onClick={() => setCartExact(item.productId, 0, date)}><Trash2 size={14} /></button>
               </div>

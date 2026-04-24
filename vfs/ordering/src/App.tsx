@@ -37,12 +37,8 @@ function loadUser(): AppUser | null {
 
 export interface CartItem {
   productId: string;
-  productProductId?: string;
   deliveryDate: string;
   qty: number;
-  name?: string;
-  defaultCode?: string;
-  uomId?: string;
 }
 
 function loadCart(): CartItem[] {
@@ -72,7 +68,6 @@ export default function App() {
   const [uomMap, setUomMap] = useState<Record<string, string>>({});
   const [holidays, setHolidays] = useState<Set<string>>(new Set());
   const [deliveryDate, setDeliveryDate] = useState<string>(() => getFirstAvailableDate(new Set()));
-  const [tmplToProd, setTmplToProd] = useState<Record<string, string>>({});
   const [priceMap, setPriceMap] = useState<Record<string, PriceEntry>>({});
   const [cutoffTime, setCutoffTime] = useState<string>("");
   const [categories, setCategories] = useState<Category[]>([]);
@@ -105,7 +100,6 @@ export default function App() {
         setHolidays(hset);
         setDeliveryDate(prev => hset.has(prev) ? getFirstAvailableDate(hset) : prev);
         if (d.cutoff_time) setCutoffTime(String(d.cutoff_time));
-        setTmplToProd(d.tmpl_to_prod ?? {});
         const pm: Record<string, PriceEntry> = {};
         for (const [tmplId, entry] of Object.entries(d.price_map ?? {})) {
           const e = entry as any;
@@ -140,7 +134,7 @@ export default function App() {
     setCategories([]); setAllTemplates([]); navigate("/order");
   };
 
-  const addToCart = (productId: string, qty: number, delivDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => {
+  const addToCart = (productId: string, qty: number, delivDate: string) => {
     setCart(prev => {
       const idx = prev.findIndex(i => i.productId === productId && i.deliveryDate === delivDate);
       if (idx >= 0) {
@@ -148,18 +142,18 @@ export default function App() {
         if (newQty <= 0) return prev.filter((_, i) => i !== idx);
         return prev.map((item, i) => i === idx ? { ...item, qty: newQty } : item);
       }
-      if (qty > 0) return [...prev, { productId, deliveryDate: delivDate, qty: Number(qty.toFixed(2)), ...meta }];
+      if (qty > 0) return [...prev, { productId, deliveryDate: delivDate, qty: Number(qty.toFixed(2)) }];
       return prev;
     });
   };
 
-  const setCartExact = (productId: string, exactQty: number, delivDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => {
+  const setCartExact = (productId: string, exactQty: number, delivDate: string) => {
     setCart(prev => {
       const next = Number(exactQty.toFixed(2));
       if (next <= 0 || isNaN(next)) return prev.filter(i => !(i.productId === productId && i.deliveryDate === delivDate));
       const idx = prev.findIndex(i => i.productId === productId && i.deliveryDate === delivDate);
       if (idx >= 0) return prev.map((item, i) => i === idx ? { ...item, qty: next } : item);
-      return [...prev, { productId, deliveryDate: delivDate, qty: next, ...meta }];
+      return [...prev, { productId, deliveryDate: delivDate, qty: next }];
     });
   };
 
@@ -171,8 +165,8 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
   const pages: Record<string, React.ReactNode> = {
-    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} tmplToProd={tmplToProd} priceMap={priceMap} allTemplates={allTemplates} categories={categories} configLoaded={configLoaded} />,
-    "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} />,
+    "/order": <CatalogPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} priceMap={priceMap} allTemplates={allTemplates} categories={categories} configLoaded={configLoaded} />,
+    "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} allTemplates={allTemplates} />,
     "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
   };
 
