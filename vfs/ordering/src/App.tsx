@@ -153,13 +153,13 @@ export default function App() {
     });
   };
 
-  const setCartExact = (productId: string, exactQty: number, delivDate: string) => {
+  const setCartExact = (productId: string, exactQty: number, delivDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => {
     setCart(prev => {
       const next = Number(exactQty.toFixed(2));
       if (next <= 0 || isNaN(next)) return prev.filter(i => !(i.productId === productId && i.deliveryDate === delivDate));
       const idx = prev.findIndex(i => i.productId === productId && i.deliveryDate === delivDate);
       if (idx >= 0) return prev.map((item, i) => i === idx ? { ...item, qty: next } : item);
-      return [...prev, { productId, deliveryDate: delivDate, qty: next }];
+      return [...prev, { productId, deliveryDate: delivDate, qty: next, ...meta }];
     });
   };
 

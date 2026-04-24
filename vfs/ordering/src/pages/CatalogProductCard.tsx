@@ -23,7 +23,7 @@ export function SkeletonCard() {
 export function ProductCard({ p, cart, addToCart, setCartExact, uomMap, deliveryDate, tmplToProd, priceMap }: {
   p: Product; cart: CartItem[];
   addToCart: (id: string, qty: number, deliveryDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => void;
-  setCartExact: (id: string, qty: number, deliveryDate: string) => void;
+  setCartExact: (id: string, qty: number, deliveryDate: string, meta?: { name?: string; defaultCode?: string; uomId?: string; productProductId?: string }) => void;
   uomMap: Record<string, string>; deliveryDate: string;
   tmplToProd: Record<string, string>; priceMap: Record<string, PriceEntry>;
 }) {
@@ -46,7 +46,7 @@ export function ProductCard({ p, cart, addToCart, setCartExact, uomMap, delivery
           onClick={() => { if (qty > 0) addToCart(p.id, -1, deliveryDate, meta); }}
         ><Minus size={14} /></button>
         <input type="number" step="1" min="0" className="qty-input" value={qty}
-          onChange={e => setCartExact(p.id, Math.max(0, parseInt(e.target.value, 10) || 0), deliveryDate)} />
+          onChange={e => setCartExact(p.id, Math.max(0, parseInt(e.target.value, 10) || 0), deliveryDate, meta)} />
         <button className="qty-btn add" onClick={() => addToCart(p.id, 1, deliveryDate, meta)}
         ><Plus size={14} /></button>
         <span className="qty-unit">{uomMap[p.uom_id ?? ""] || "件"}</span>
