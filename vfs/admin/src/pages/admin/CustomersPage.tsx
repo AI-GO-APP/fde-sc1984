@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as db from '../../db';
 
+const API_BASE = (window as any).__API_BASE__ || '/api/v1';
+const ORDERING_SLUG = '435c3ce8f6f8';
+
 type Customer = {
   id: string; name: string; vat: string; email: string;
   phone: string; payment_term: string; salesperson_id: string;
@@ -9,6 +12,7 @@ type Customer = {
 };
 type Employee = { id: string; name: string; user_id: string; job_title: string };
 type Tag = { id: string; name: string; custom_data: any };
+type SuccessInfo = { branchName: string; email: string; password: string };
 
 const INVOICE_FORMATS = ['紙本', '電子'];
 const PAYMENT_TERMS = ['半月結', '整月結'];
@@ -17,9 +21,17 @@ const EMPTY_FORM = {
   headquarters_name: '', vat: '', owner_name: '',
   branch_name: '', contact_address: '', phone: '',
   contact_name: '', contact_phone: '',
+  contact_email: '',
   email: '', payment_term: '', salesperson_id: '',
   invoice_format: '', region_tag_id: '',
 };
+
+function genPassword(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let p = '';
+  for (let i = 0; i < 8; i++) p += chars[Math.floor(Math.random() * chars.length)];
+  return p;
+}
 
 export default function CustomersPage() {
   const nav = useNavigate();
@@ -34,6 +46,7 @@ export default function CustomersPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [expandedHq, setExpandedHq] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -169,8 +182,42 @@ export default function CustomersPage() {
         });
       }
 
+      // 5. 建立客戶下單帳號（若有填聯絡信箱）
+      let accountInfo: { email: string; password: string } | null = null;
+      const contactEmail = form.contact_email.trim();
+      if (contactEmail) {
+        const password = genPassword();
+
+        const regResp = await fetch(`${API_BASE}/custom-app-auth/${ORDERING_SLUG}/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: contactEmail, password, display_name: form.branch_name.trim() }),
+        });
+        if (!regResp.ok) {
+          const b = await regResp.json().catch(() => ({}));
+          throw new Error(b.detail || '下單帳號建立失敗');
+        }
+
+        const loginResp = await fetch(`${API_BASE}/custom-app-auth/${ORDERING_SLUG}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: contactEmail, password }),
+        });
+        if (!loginResp.ok) throw new Error('帳號建立成功但登入失敗，請稍後再試');
+        const { access_token: userToken } = await loginResp.json();
+
+        await fetch(`${API_BASE}/ext/actions/run/redeem_invite_token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${userToken}` },
+          body: JSON.stringify({ params: { token: inviteToken } }),
+        });
+
+        accountInfo = { email: contactEmail, password };
+      }
+
       setShowForm(false);
       setForm({ ...EMPTY_FORM });
+      if (accountInfo) setSuccessInfo({ branchName: form.branch_name.trim(), ...accountInfo });
       await load();
     } catch (e: any) {
       setFormError(e?.message || '新增失敗');
@@ -273,6 +320,48 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
+
+      {successInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
+            <div className="px-6 py-5 text-center space-y-4">
+              <div className="text-4xl">✅</div>
+              <div>
+                <p className="text-lg font-bold text-gray-900">客戶已建立</p>
+                <p className="text-sm text-gray-500 mt-1">{successInfo.branchName} 的下單帳號</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-4 text-left space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-500">帳號（Email）</span>
+                  <span className="font-mono font-medium text-gray-800">{successInfo.email}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-500">預設密碼</span>
+                  <span className="font-mono font-medium text-gray-800 tracking-wider">{successInfo.password}</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">請將以上資訊交給客戶，客戶登入後可自行修改密碼</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`帳號：${successInfo.email}\n密碼：${successInfo.password}`);
+                    } catch {
+                      prompt('請手動複製：', `帳號：${successInfo.email}\n密碼：${successInfo.password}`);
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
+                  複製帳密
+                </button>
+                <button onClick={() => setSuccessInfo(null)}
+                  className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">
+                  完成
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -381,16 +470,25 @@ export default function CustomersPage() {
 
               <section>
                 <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">店內聯絡人</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">聯絡人姓名</label>
-                    <input type="text" value={form.contact_name} onChange={f('contact_name')} placeholder="陳小華"
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg" />
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">聯絡人姓名</label>
+                      <input type="text" value={form.contact_name} onChange={f('contact_name')} placeholder="陳小華"
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">聯絡電話</label>
+                      <input type="tel" value={form.contact_phone} onChange={f('contact_phone')} placeholder="0912-345-678"
+                        className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg" />
+                    </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">聯絡電話</label>
-                    <input type="tel" value={form.contact_phone} onChange={f('contact_phone')} placeholder="0912-345-678"
+                    <label className="block text-sm font-medium text-gray-700 mb-1">下單帳號信箱</label>
+                    <input type="email" value={form.contact_email} onChange={f('contact_email')}
+                      placeholder="contact@store.com"
                       className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg" />
+                    <p className="text-xs text-gray-400 mt-1">填入後將自動建立下單 App 帳號，完成後顯示預設密碼供交接</p>
                   </div>
                 </div>
               </section>
