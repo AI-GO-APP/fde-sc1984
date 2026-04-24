@@ -52,17 +52,6 @@ export default function DataProvider({ children }: { children: ReactNode }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDateState] = useState(() => searchParams.get('date') || today);
 
-  const setSelectedDate = useCallback((d: string) => {
-    setSelectedDateState(d);
-    setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('date', d); return p; }, { replace: true });
-  }, [setSearchParams]);
-
-  useEffect(() => {
-    if (!searchParams.get('date')) {
-      setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('date', selectedDate); return p; }, { replace: true });
-    }
-  }, [searchParams, selectedDate, setSearchParams]);
-
   const lastFetch = useRef(0);
   const fetching = useRef(false);
 
@@ -124,6 +113,18 @@ export default function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { refresh(true); }, [refresh]);
+
+  const setSelectedDate = useCallback((d: string) => {
+    setSelectedDateState(d);
+    setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('date', d); return p; }, { replace: true });
+    refresh(true);
+  }, [setSearchParams, refresh]);
+
+  useEffect(() => {
+    if (!searchParams.get('date')) {
+      setSearchParams(prev => { const p = new URLSearchParams(prev); p.set('date', selectedDate); return p; }, { replace: true });
+    }
+  }, [searchParams, selectedDate, setSearchParams]);
 
   const value = useMemo(() => ({
     orders, customers, orderLines, employees,
