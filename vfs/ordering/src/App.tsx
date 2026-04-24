@@ -64,8 +64,14 @@ function getPath(): string {
 // ct = base64(JSON.stringify({ token, email }))，包成單一 param 避免平台過濾
 const _initInvite = (() => {
   try {
-    const raw = new URLSearchParams(window.location.search).get("ct");
-    if (raw) return JSON.parse(atob(raw)) as { token?: string; email?: string };
+    const url = new URL(window.location.href);
+    const m = url.hash.replace(/^#/, "").match(/(?:^|&)ct=([^&]+)/);
+    const raw = m ? m[1] : null;
+    if (raw) {
+      const b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
+      return JSON.parse(atob(padded)) as { token?: string; email?: string };
+    }
   } catch {}
   return {};
 })();

@@ -1,10 +1,15 @@
 def execute(ctx):
+    import re
     name = (ctx.params.get("name") or "").strip()
     if not name:
         ctx.response.json({"error": "姓名為必填"})
         return
 
     work_email = (ctx.params.get("work_email") or "").strip()
+    if work_email and not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', work_email):
+        ctx.response.json({"error": "Email 格式不正確"})
+        return
+
     department_id = (ctx.params.get("department_id") or "")
     job_title = (ctx.params.get("job_title") or "").strip()
 

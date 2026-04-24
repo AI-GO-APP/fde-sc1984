@@ -70,17 +70,13 @@ export default function EmployeesPage() {
       setForm(prev => ({ ...prev, [k]: e.target.value }));
 
   const openCreate = () => {
-    setEditingId(null);
-    setForm({ ...EMPTY_FORM });
-    setFormError('');
-    setShowForm(true);
+    setEditingId(null); setForm({ ...EMPTY_FORM }); setFormError(''); setShowForm(true);
   };
 
   const openEdit = (emp: Employee) => {
     setEditingId(emp.id);
     setForm({ name: emp.name, work_email: emp.work_email, department_id: emp.department_id, job_title: emp.job_title });
-    setFormError('');
-    setShowForm(true);
+    setFormError(''); setShowForm(true);
   };
 
   const submit = async () => {
@@ -88,11 +84,12 @@ export default function EmployeesPage() {
     if (form.work_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.work_email.trim())) { setFormError('Email 格式不正確'); return; }
     setSaving(true); setFormError('');
     try {
-      const data: Record<string, any> = { name: form.name.trim() };
-      data.work_email = form.work_email.trim() || '';
-      data.department_id = form.department_id || '';
-      data.job_title = form.job_title.trim() || '';
-
+      const data: Record<string, any> = {
+        name: form.name.trim(),
+        work_email: form.work_email.trim() || '',
+        department_id: form.department_id || '',
+        job_title: form.job_title.trim() || '',
+      };
       if (editingId) {
         await db.update('hr_employees', editingId, data);
       } else {
@@ -111,7 +108,8 @@ export default function EmployeesPage() {
     if (!emp.work_email) return;
     setInviteState(prev => ({ ...prev, [emp.id]: { status: 'loading' } }));
     try {
-      const res = await db.sendInvitation(emp.work_email, emp.name);
+      // 帶入 employee_id，讓平台在對方註冊時對應到此筆 employee record
+      const res = await db.sendInvitation(emp.work_email, emp.name, emp.id);
       const link = `https://ai-go.app/register?token=${res.token}`;
       setInviteState(prev => ({ ...prev, [emp.id]: { status: 'ready', link } }));
     } catch (e: any) {

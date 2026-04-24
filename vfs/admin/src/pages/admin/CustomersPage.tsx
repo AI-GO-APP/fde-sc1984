@@ -65,15 +65,24 @@ export default function CustomersPage() {
       ]);
 
       const salesDept = (depts || []).find((d: any) => String(d.name || '').trim() === '業務');
-      let emps: any[] = [];
-      if (salesDept) {
-        emps = await db.queryFiltered('hr_employees', [
-          { column: 'department_id', op: 'eq', value: salesDept.id },
-          { column: 'user_id', op: 'is_not_null' },
-        ]);
-      } else {
-        emps = await db.queryFiltered('hr_employees', [{ column: 'user_id', op: 'is_not_null' }]);
+      const salesDeptId = salesDept ? String(salesDept.id) : null;
+      const allEmps = await db.query('hr_employees');
+      const nameToUserId: Record<string, string> = {};
+      for (const e of (allEmps || [])) {
+        if (e.user_id && e.name) nameToUserId[String(e.name)] = String(e.user_id);
       }
+      const emps = (allEmps || [])
+        .filter((e: any) => {
+          if (e.active === false) return false;
+          if (!salesDeptId) return !!e.user_id;
+          const did = Array.isArray(e.department_id) ? e.department_id[0] : e.department_id;
+          return String(did) === salesDeptId;
+        })
+        .map((e: any) => ({
+          ...e,
+          user_id: e.user_id || nameToUserId[String(e.name || '')] || null,
+        }))
+        .filter((e: any) => !!e.user_id);
 
       setAllCustomers(custs || []);
       setEmployees((emps || []).map((e: any) => ({
@@ -104,8 +113,9 @@ export default function CustomersPage() {
 
   const inviteLink = (token: string, email: string) => {
     if (!token) return '';
-    const payload = encodeURIComponent(btoa(JSON.stringify({ token, email: email || '' })));
-    return `${ORDERING_APP}?ct=${payload}`;
+    const payload = btoa(JSON.stringify({ token, email: email || '' }))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    return `${ORDERING_APP}#ct=${payload}`;
   };
 
   const copyLink = async (token: string, email: string, branchId: string) => {

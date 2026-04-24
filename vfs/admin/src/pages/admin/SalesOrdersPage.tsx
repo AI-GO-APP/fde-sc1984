@@ -193,8 +193,7 @@ export default function SalesOrdersPage() {
         </div>
         <select className="px-3 pr-8 py-2 border border-gray-200 rounded-lg bg-white text-sm" value={filter} onChange={e=>setFilter(e.target.value)}>
           <option value="all">全部狀態</option>
-          <option value="draft">待處理（草稿）</option>
-          <option value="sent">已送出</option>
+          <option value="draft">已接收</option>
           <option value="sale">已確認</option>
           <option value="done">完成</option>
           <option value="cancel">已取消</option>
@@ -220,7 +219,11 @@ export default function SalesOrdersPage() {
                 <div className="text-left"><p className="font-bold text-gray-900">{o.name||`SO-${(o.id||'').slice(0,8)}`}</p>
                 <p className="text-sm text-gray-400">{cust?.name||'—'} · {o.date_order?new Date(o.date_order).toLocaleDateString('zh-TW'):'—'}</p></div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                {(isDraft(o) || o.state === 'sent') && (<>
+                  <button onClick={e=>{e.stopPropagation();setConfirm({id:o.id,action:'sale'});}} className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors">確認</button>
+                  <button onClick={e=>{e.stopPropagation();setConfirm({id:o.id,action:'cancel'});}} className="px-3 py-1.5 bg-gray-100 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">取消</button>
+                </>)}
                 <span style={{color:st.color,background:st.bg,padding:'3px 10px',borderRadius:'20px',fontSize:'12px',fontWeight:600}}>{st.label}</span>
                 <span className="font-bold text-gray-900">{o.amount_total!=null?`$${Number(o.amount_total).toLocaleString()}`:'—'}</span>
                 <span className="text-gray-400">{exp?'▾':'▸'}</span>
@@ -253,10 +256,6 @@ export default function SalesOrdersPage() {
                   </tr>);
                 })}</tbody></table>
               )}
-              {(isDraft(o) || o.state === 'sent') && <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
-                <button onClick={()=>setConfirm({id:o.id,action:'sale'})} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors">確認訂單</button>
-                <button onClick={()=>setConfirm({id:o.id,action:'cancel'})} className="px-4 py-2 bg-gray-100 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors">取消訂單</button>
-              </div>}
             </div>}
           </div>);
         })}</div>}

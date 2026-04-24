@@ -5,11 +5,12 @@ import * as db from '../../db';
 type Supplier = {
   id: string; name: string;
   defaultBuyerId: string;
+  paymentTerm: string;
   _cd: Record<string, any>;
 };
 type Employee = { id: string; name: string; userId: string };
 
-const EMPTY = { name: '', defaultBuyerId: '' };
+const EMPTY = { name: '', defaultBuyerId: '', paymentTerm: '' };
 
 export default function SuppliersPage() {
   const nav = useNavigate();
@@ -27,14 +28,33 @@ export default function SuppliersPage() {
   const load = async () => {
     setLoading(true); setErr('');
     try {
-      const [rawSups, rawEmps] = await Promise.all([
+      const [rawSups, rawDepts, rawAllEmps] = await Promise.all([
         db.queryFiltered('suppliers', [{ column: 'active', op: 'eq', value: true }]),
-        db.queryFiltered('hr_employees', [{ column: 'active', op: 'eq', value: true }]),
+        db.query('hr_departments'),
+        db.query('hr_employees'),
       ]);
+      const purchaseDept = (rawDepts || []).find((d: any) => String(d.name || '').trim() === '採購');
+      const purchaseDeptId = purchaseDept ? String(purchaseDept.id) : null;
+      const nameToUserId: Record<string, string> = {};
+      for (const e of (rawAllEmps || [])) {
+        if (e.user_id && e.name) nameToUserId[String(e.name)] = String(e.user_id);
+      }
+      const rawEmps = (rawAllEmps || [])
+        .filter((e: any) => {
+          if (e.active === false) return false;
+          if (!purchaseDeptId) return !!e.user_id;
+          const did = Array.isArray(e.department_id) ? e.department_id[0] : e.department_id;
+          return String(did) === purchaseDeptId;
+        })
+        .map((e: any) => ({
+          ...e,
+          user_id: e.user_id || nameToUserId[String(e.name || '')] || null,
+        }))
+        .filter((e: any) => !!e.user_id);
       setSuppliers(
         (rawSups || []).map((r: any) => {
           const cd = (r.custom_data && typeof r.custom_data === 'object') ? r.custom_data : {};
-          return { id: String(r.id), name: String(r.name || ''), defaultBuyerId: String(cd.default_buyer_id || ''), _cd: cd };
+          return { id: String(r.id), name: String(r.name || ''), defaultBuyerId: String(cd.default_buyer_id || ''), paymentTerm: String(cd.payment_term || ''), _cd: cd };
         }).sort((a: Supplier, b: Supplier) => a.name.localeCompare(b.name, 'zh-Hant'))
       );
       setEmployees(
@@ -73,7 +93,7 @@ export default function SuppliersPage() {
       if (editingId) {
         await db.update('suppliers', editingId, { name: form.name.trim(), custom_data: cd });
       } else {
-        await db.insert('suppliers', { name: form.name.trim(), custom_data: cd });
+        await db.insert('suppliers', { name: form.name.trim(), supplier_type: 'company', status: 'active', custom_data: cd });
       }
       setShowForm(false);
       await load();

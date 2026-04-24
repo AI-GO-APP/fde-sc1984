@@ -145,10 +145,12 @@ export async function deleteCustom(recordId: string): Promise<void> {
   }
 }
 
-export async function sendInvitation(email: string, name: string): Promise<any> {
+export async function sendInvitation(email: string, name: string, employeeId?: string): Promise<any> {
+  const body: Record<string, any> = { email, name };
+  if (employeeId) body.employee_id = employeeId;
   return _r(await fetch(API_BASE + '/invitations', {
     method: 'POST', headers: _h(), credentials: 'include',
-    body: JSON.stringify({ email, name }),
+    body: JSON.stringify(body),
   }));
 }
 

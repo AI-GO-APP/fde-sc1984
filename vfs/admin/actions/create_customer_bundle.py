@@ -1,6 +1,8 @@
 def execute(ctx):
-    import uuid
+    import uuid, re
     p = ctx.params
+
+    EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
     headquarters_name = (p.get("headquarters_name") or "").strip()
     branch_name = (p.get("branch_name") or "").strip()
@@ -19,10 +21,18 @@ def execute(ctx):
     contact_name = (p.get("contact_name") or "").strip()
     contact_phone = (p.get("contact_phone") or "").strip()
     email = (p.get("email") or "").strip()
+    contact_email = (p.get("contact_email") or "").strip()
     payment_term = (p.get("payment_term") or "").strip()
     salesperson_id = (p.get("salesperson_id") or "")
     invoice_format = (p.get("invoice_format") or "").strip()
     region_tag_id = (p.get("region_tag_id") or "")
+
+    if email and not EMAIL_RE.match(email):
+        ctx.response.json({"error": "公司 Email 格式不正確"})
+        return
+    if contact_email and not EMAIL_RE.match(contact_email):
+        ctx.response.json({"error": "聯絡人 Email 格式不正確"})
+        return
 
     # Step 1: 建公司（headquarters）
     hq_data = {
@@ -51,15 +61,21 @@ def execute(ctx):
 
     # Step 2: 建分店（branch）並生成 invite_token
     invite_token = str(uuid.uuid4())
+    branch_custom = {
+        "kind": "branch",
+        "parent_customer_id": hq_id,
+        "invite_token": invite_token,
+    }
+    if contact_email:
+        branch_custom["contact_email"] = contact_email
+    if region_tag_id:
+        branch_custom["region_tag_id"] = region_tag_id
+
     branch_data = {
         "name": branch_name,
         "customer_type": "individual",
         "is_company": False,
-        "custom_data": {
-            "kind": "branch",
-            "parent_customer_id": hq_id,
-            "invite_token": invite_token,
-        },
+        "custom_data": branch_custom,
     }
     if contact_address:
         branch_data["contact_address"] = contact_address
