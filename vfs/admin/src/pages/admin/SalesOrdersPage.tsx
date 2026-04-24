@@ -146,7 +146,7 @@ export default function SalesOrdersPage() {
 
     for (const id of selectedOrders) {
       const o = targetOrders.find(x => x.id === id);
-      if (action === 'sale' && o?.state !== 'draft') continue; // only process draft ones
+      if (action === 'sale' && o && !isDraft(o)) continue;
       try { await db.update('sale_orders', id, {state: action}); } catch(e) {}
     }
     setOrders(prev => prev.map(o => selectedOrders.has(o.id) && (action !== 'sale' || isDraft(o)) ? {...o, state: action} : o));
