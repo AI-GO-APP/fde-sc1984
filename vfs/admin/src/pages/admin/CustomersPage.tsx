@@ -162,6 +162,7 @@ export default function CustomersPage() {
       const { type, record } = editTarget;
       if (type === 'hq') {
         if (!editHq.name.trim()) { setEditError('公司名稱為必填'); setEditSaving(false); return; }
+        if (editHq.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editHq.email.trim())) { setEditError('Email 格式不正確'); setEditSaving(false); return; }
         await db.update('customers', record.id, {
           name: editHq.name.trim(),
           vat: editHq.vat.trim(),
@@ -172,6 +173,7 @@ export default function CustomersPage() {
         });
       } else {
         if (!editBranch.name.trim()) { setEditError('店名為必填'); setEditSaving(false); return; }
+        if (editBranch.contact_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editBranch.contact_email.trim())) { setEditError('Email 格式不正確'); setEditSaving(false); return; }
         const cd = record.custom_data || {};
         await db.update('customers', record.id, {
           name: editBranch.name.trim(),
@@ -201,6 +203,8 @@ export default function CustomersPage() {
   const submit = async () => {
     if (!form.headquarters_name.trim()) { setFormError('公司名稱為必填'); return; }
     if (!form.branch_name.trim()) { setFormError('店名為必填'); return; }
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setFormError('公司 Email 格式不正確'); return; }
+    if (form.contact_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contact_email.trim())) { setFormError('聯絡人 Email 格式不正確'); return; }
     setSaving(true); setFormError('');
     try {
       const inviteToken = crypto.randomUUID();

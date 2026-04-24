@@ -20,6 +20,7 @@ export default function InvitePage({ token, defaultEmail, onLogin }: Props) {
 
   const submit = async () => {
     if (!email.trim()) { setError("請輸入 Email"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError("Email 格式不正確"); return; }
     if (password.length < 6) { setError("密碼至少 6 個字元"); return; }
     if (password !== confirm) { setError("兩次密碼不一致"); return; }
 

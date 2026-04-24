@@ -85,6 +85,7 @@ export default function EmployeesPage() {
 
   const submit = async () => {
     if (!form.name.trim()) { setFormError('姓名為必填'); return; }
+    if (form.work_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.work_email.trim())) { setFormError('Email 格式不正確'); return; }
     setSaving(true); setFormError('');
     try {
       const data: Record<string, any> = { name: form.name.trim() };
