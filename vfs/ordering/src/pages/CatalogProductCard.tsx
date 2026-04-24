@@ -1,5 +1,5 @@
 import React from "react";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, Star } from "lucide-react";
 import { CartItem, PriceEntry } from "../App";
 
 export interface Product {
@@ -20,17 +20,22 @@ export function SkeletonCard() {
   );
 }
 
-export function ProductCard({ p, cart, addToCart, setCartExact, uomMap, deliveryDate, priceMap }: {
+export function ProductCard({ p, cart, addToCart, setCartExact, uomMap, deliveryDate, priceMap, isFavorite, onToggleFavorite }: {
   p: Product; cart: CartItem[];
   addToCart: (id: string, qty: number, deliveryDate: string) => void;
   setCartExact: (id: string, qty: number, deliveryDate: string) => void;
   uomMap: Record<string, string>; deliveryDate: string;
   priceMap: Record<string, PriceEntry>;
+  isFavorite: boolean;
+  onToggleFavorite: (tmplId: string) => void;
 }) {
   const qty = cart.find(i => i.productId === p.id && i.deliveryDate === deliveryDate)?.qty ?? 0;
   const price = priceMap[p.id]?.price ?? p.list_price ?? 0;
   return (
     <div className="product-card">
+      <button className="fav-btn" onClick={() => onToggleFavorite(p.id)} aria-label="收藏">
+        <Star size={16} fill={isFavorite ? "currentColor" : "none"} className={isFavorite ? "fav-active" : ""} />
+      </button>
       <div className="product-info">
         <span className="product-code">{p.default_code || ""}</span>
         <span className="product-name">{p.name}</span>

@@ -14,7 +14,7 @@ def execute(ctx):
             skipped.append(name)
             continue
         try:
-            ctx.db.insert("hr_departments", {"name": name})
+            ctx.db.insert("hr_departments", {"name": name, "active": True})
             created.append(name)
         except Exception as e:
             ctx.response.json({"error": f"建立 {name} 失敗：{e}"}); return

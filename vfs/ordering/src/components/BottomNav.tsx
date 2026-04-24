@@ -2,7 +2,7 @@ import React from "react";
 import { Package, ShoppingCart, ClipboardList } from "lucide-react";
 
 const tabs = [
-  { path: "/order", icon: Package, label: "商品" },
+  { path: "/products", icon: Package, label: "商品" },
   { path: "/cart", icon: ShoppingCart, label: "購物車" },
   { path: "/orders", icon: ClipboardList, label: "訂單" },
 ];
