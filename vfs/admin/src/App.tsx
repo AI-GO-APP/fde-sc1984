@@ -13,6 +13,8 @@ import SettingsPage from "./pages/admin/SettingsPage";
 import SupplierMappingPage from "./pages/admin/SupplierMappingPage";
 import DriverMappingPage from "./pages/admin/DriverMappingPage";
 import CustomersPage from "./pages/admin/CustomersPage";
+import CustomerTagsPage from "./pages/admin/CustomerTagsPage";
+import SuppliersPage from "./pages/admin/SuppliersPage";
 import EmployeesPage from "./pages/admin/EmployeesPage";
 
 export default function App() {
@@ -34,6 +36,8 @@ export default function App() {
       <Route path="/admin/settings/supplier-mapping" element={<SupplierMappingPage />} />
       <Route path="/admin/settings/driver-mapping" element={<DriverMappingPage />} />
       <Route path="/admin/settings/customers" element={<CustomersPage />} />
+      <Route path="/admin/settings/customer-tags" element={<CustomerTagsPage />} />
+      <Route path="/admin/settings/suppliers" element={<SuppliersPage />} />
       <Route path="/admin/settings/employees" element={<EmployeesPage />} />
       <Route path="/admin/settings/system" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/admin/daily" replace />} />

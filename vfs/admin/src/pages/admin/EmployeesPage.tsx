@@ -23,7 +23,7 @@ export default function EmployeesPage() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  const [inviteState, setInviteState] = useState<Record<string, { status: string; msg?: string }>>({});
+  const [inviteState, setInviteState] = useState<Record<string, { status: string; link?: string; copied?: boolean; msg?: string }>>({});
 
   const load = async () => {
     setLoading(true); setError('');
@@ -106,16 +106,26 @@ export default function EmployeesPage() {
     }
   };
 
-  const sendInvite = async (emp: Employee) => {
+  const getInviteLink = async (emp: Employee) => {
     if (!emp.work_email) return;
-    setInviteState(prev => ({ ...prev, [emp.id]: { status: 'sending' } }));
+    setInviteState(prev => ({ ...prev, [emp.id]: { status: 'loading' } }));
     try {
-      await db.sendInvitation(emp.work_email, emp.name);
-      setInviteState(prev => ({ ...prev, [emp.id]: { status: 'sent' } }));
-      await load();
+      const res = await db.sendInvitation(emp.work_email, emp.name);
+      const link = `https://ai-go.app/register?token=${res.token}`;
+      setInviteState(prev => ({ ...prev, [emp.id]: { status: 'ready', link } }));
     } catch (e: any) {
-      setInviteState(prev => ({ ...prev, [emp.id]: { status: 'error', msg: e?.message || '寄送失敗' } }));
+      setInviteState(prev => ({ ...prev, [emp.id]: { status: 'error', msg: e?.message || '取得失敗' } }));
     }
+  };
+
+  const copyInviteLink = async (empId: string, link: string) => {
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      prompt('請手動複製以下連結：', link);
+    }
+    setInviteState(prev => ({ ...prev, [empId]: { ...prev[empId], copied: true } }));
+    setTimeout(() => setInviteState(prev => ({ ...prev, [empId]: { ...prev[empId], copied: false } })), 2000);
   };
 
   return (
@@ -174,14 +184,19 @@ export default function EmployeesPage() {
                           {e.has_account ? (
                             <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">已建立</span>
                           ) : e.work_email ? (
-                            inv?.status === 'sent' ? (
-                              <span className="text-xs text-blue-500">✓ 邀請已寄出</span>
+                            inv?.status === 'loading' ? (
+                              <span className="text-xs text-gray-400">取得中...</span>
+                            ) : inv?.status === 'ready' ? (
+                              <button onClick={() => copyInviteLink(e.id, inv.link!)}
+                                className="px-2 py-1 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 rounded font-medium">
+                                {inv.copied ? '已複製！' : '複製邀請連結'}
+                              </button>
                             ) : inv?.status === 'error' ? (
                               <span className="text-xs text-red-500">{inv.msg}</span>
                             ) : (
-                              <button onClick={() => sendInvite(e)} disabled={inv?.status === 'sending'}
-                                className="px-2 py-1 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 rounded font-medium disabled:opacity-50">
-                                {inv?.status === 'sending' ? '寄送中...' : '發送邀請'}
+                              <button onClick={() => getInviteLink(e)}
+                                className="px-2 py-1 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 rounded font-medium">
+                                取得邀請連結
                               </button>
                             )
                           ) : (

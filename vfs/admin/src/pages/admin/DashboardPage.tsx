@@ -29,14 +29,15 @@ export default function DashboardPage() {
       {label:'客戶管理', desc:'新增客戶、分店、聯絡人', href:'/admin/settings/customers'},
       {label:'員工管理', desc:'查看員工、部門、帳號狀態', href:'/admin/settings/employees'},
     ]},
-    {title:'商品設定', items:[
-      {label:'產品管理', desc:'編輯產品分類', href:'/admin/settings/products'},
-      {label:'產品分類管理', desc:'新增/修改分類', href:'/admin/settings/product-categories'},
-      {label:'分類-買辦人對應', desc:'每個分類由誰買', href:'/admin/settings/category-buyer'},
+    {title:'配送組', items:[
+      {label:'地區 / 司機設定', desc:'配送區域與預設司機指派', href:'/admin/settings/customer-tags'},
     ]},
-    {title:'關係對應', items:[
-      {label:'供應商-產品對應', desc:'品項誰家供', href:'/admin/settings/supplier-mapping'},
-      {label:'司機-客戶對應', desc:'誰送哪些客戶', href:'/admin/settings/driver-mapping'},
+    {title:'採購組', items:[
+      {label:'供應商管理', desc:'供應商資料與預設採購員指派', href:'/admin/settings/suppliers'},
+    ]},
+    {title:'商品設定', items:[
+      {label:'產品管理', desc:'編輯產品、上下架、分類', href:'/admin/settings/products'},
+      {label:'產品分類管理', desc:'新增/修改分類', href:'/admin/settings/product-categories'},
     ]},
     {title:'系統', items:[
       {label:'系統設定', desc:'假日、截止時間', href:'/admin/settings/system'},
