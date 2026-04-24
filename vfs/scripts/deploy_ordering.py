@@ -131,9 +131,6 @@ def main():
     vfs = read_vfs(VFS_DIR)
     upload_vfs(h, app_id, vfs)
 
-    print("\n[3.5/4] 編譯驗證...")
-    compile_app(h, app_id)
-
     print("\n[4/4] 發布...")
     publish_app(h, app_id)
 

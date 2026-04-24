@@ -216,7 +216,7 @@ export default function DeliveryPage() {
                   const savedDriverId=o.client_order_ref||'';
                   const routeDriverId=custToDriver[String(o.customer_id||'')]||'';
                   // 優先順序：手動選擇 > 已儲存 > 路線預設
-                  const displayDriverId=localDrivers[o.id]??savedDriverId||routeDriverId;
+                  const displayDriverId=localDrivers[o.id]!==undefined?localDrivers[o.id]:(savedDriverId||routeDriverId);
                   const driverEmp=displayDriverId?empMap[displayDriverId]:null;
                   const isSavingThis=savingDriver===o.id;
                   const isUnsaved=displayDriverId&&displayDriverId!==savedDriverId;
