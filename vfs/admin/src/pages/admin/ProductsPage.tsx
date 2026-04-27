@@ -109,6 +109,12 @@ export default function ProductsPage() {
   const [addSupId, setAddSupId] = useState('');
   const [supBusy, setSupBusy] = useState(false);
 
+  // 訂購規則狀態
+  const [prodVariantId, setProdVariantId] = useState<string | null>(null);
+  const [editStep, setEditStep] = useState('');
+  const [editMinQty, setEditMinQty] = useState('');
+  const [editMaxQty, setEditMaxQty] = useState('');
+
   const load = async () => {
     setLoading(true); setError('');
     try {
@@ -218,10 +224,23 @@ export default function ProductsPage() {
   };
 
   // 供應商 modal 操作
-  const openSupModal = (p: Tmpl) => {
+  const openSupModal = async (p: Tmpl) => {
     setViewingProduct(p);
     setEditDefaultSup(p.defaultSupplierId);
     setAddSupId('');
+    setProdVariantId(null);
+    setEditStep(''); setEditMinQty(''); setEditMaxQty('');
+    try {
+      const variants = await db.queryFiltered('product_products', [{ column: 'product_tmpl_id', op: 'eq', value: p.id }], 1);
+      const v = variants?.[0];
+      if (v) {
+        setProdVariantId(String(v.id));
+        const cd = (v.custom_data && typeof v.custom_data === 'object') ? v.custom_data as Record<string,any> : {};
+        setEditStep(String(cd.order_step || ''));
+        setEditMinQty(String(cd.min_qty || ''));
+        setEditMaxQty(String(cd.max_qty || ''));
+      }
+    } catch {}
   };
 
   const saveDefaultSup = async () => {
@@ -234,6 +253,19 @@ export default function ProductsPage() {
       await db.update('product_templates', viewingProduct.id, { custom_data: cd });
       await load();
       setViewingProduct(prev => prev ? { ...prev, defaultSupplierId: editDefaultSup, _cd: cd } : null);
+    } catch (e: any) { alert(e?.message || '儲存失敗'); }
+    finally { setSupBusy(false); }
+  };
+
+  const saveOrderRules = async () => {
+    if (!prodVariantId) return;
+    setSupBusy(true);
+    try {
+      const cd: Record<string, any> = {};
+      const s = parseFloat(editStep); if (s > 0) cd.order_step = s;
+      const mn = parseFloat(editMinQty); if (mn > 0) cd.min_qty = mn;
+      const mx = parseFloat(editMaxQty); if (mx > 0) cd.max_qty = mx;
+      await db.update('product_products', prodVariantId, { custom_data: cd });
     } catch (e: any) { alert(e?.message || '儲存失敗'); }
     finally { setSupBusy(false); }
   };
@@ -436,6 +468,37 @@ export default function ProductsPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+
+            {/* 訂購規則 */}
+            <div className="px-6 py-4 border-t border-gray-100 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">訂購規則</p>
+              {prodVariantId ? (
+                <>
+                  <div className="flex gap-2">
+                    {[
+                      { label: '步進', val: editStep, set: setEditStep, placeholder: '例：5' },
+                      { label: '最小', val: editMinQty, set: setEditMinQty, placeholder: '例：10' },
+                      { label: '最大', val: editMaxQty, set: setEditMaxQty, placeholder: '0=不限' },
+                    ].map(({ label, val, set, placeholder }) => (
+                      <div key={label} className="flex-1">
+                        <label className="block text-xs text-gray-400 mb-0.5">{label}</label>
+                        <input type="number" min="0" value={val} onChange={e => set(e.target.value)} placeholder={placeholder}
+                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                      </div>
+                    ))}
+                    <div className="flex items-end">
+                      <button onClick={saveOrderRules} disabled={supBusy}
+                        className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                        儲存
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400">留空或 0 代表不限制</p>
+                </>
+              ) : (
+                <p className="text-xs text-gray-400">無對應規格記錄</p>
               )}
             </div>
 

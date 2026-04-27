@@ -131,7 +131,13 @@ export default function App() {
     db.runAction("get_catalog", {})
       .then((d: any) => {
         setCategories(Array.isArray(d.categories) ? d.categories : []);
-        setAllTemplates(Array.isArray(d.templates) ? d.templates : []);
+        const settings: Record<string, any> = d.order_settings ?? {};
+        setAllTemplates(
+          (Array.isArray(d.templates) ? d.templates : []).map((t: any) => {
+            const s = settings[String(t.id)] ?? {};
+            return { ...t, orderStep: s.order_step || 1, minQty: s.min_qty || 0, maxQty: s.max_qty || 0 };
+          })
+        );
         const map: Record<string, string> = {};
         for (const u of Array.isArray(d.uoms) ? d.uoms : []) map[String(u.id)] = u.name;
         setUomMap(map);
