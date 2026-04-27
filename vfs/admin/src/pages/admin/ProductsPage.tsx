@@ -4,10 +4,11 @@ import * as db from '../../db';
 
 type Tmpl = {
   id: string; name: string; default_code: string;
-  categ_id: any; sale_ok: boolean;
+  categ_id: any; uom_id: any; sale_ok: boolean;
   defaultSupplierId: string; _cd: Record<string, any>;
 };
 type Cat = { id: string; name: string };
+type Uom = { id: string; name: string };
 type Supplier = { id: string; name: string };
 type SupMap = { id: string; supplierId: string; productTmplId: string };
 
@@ -88,9 +89,10 @@ function AddProductModal({ cats, onClose, onDone }: {
   );
 }
 
-function EditProductModal({ p, cats, suppliers, maps, onClose, onReload }: {
+function EditProductModal({ p, cats, uoms, suppliers, maps, onClose, onReload }: {
   p: Tmpl;
   cats: Cat[];
+  uoms: Uom[];
   suppliers: Supplier[];
   maps: SupMap[];
   onClose: () => void;
@@ -99,6 +101,7 @@ function EditProductModal({ p, cats, suppliers, maps, onClose, onReload }: {
   const [name, setName] = useState(p.name);
   const [code, setCode] = useState(p.default_code);
   const [catId, setCatId] = useState(() => resolveId(p.categ_id));
+  const [uomId, setUomId] = useState(() => resolveId(p.uom_id));
   const [saleOk, setSaleOk] = useState(p.sale_ok);
   const [defaultSup, setDefaultSup] = useState(p.defaultSupplierId);
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -137,6 +140,7 @@ function EditProductModal({ p, cats, suppliers, maps, onClose, onReload }: {
         name: name.trim(),
         default_code: code.trim() || false,
         categ_id: catId || false,
+        uom_id: uomId || false,
         sale_ok: saleOk,
         custom_data: cd,
       });
@@ -203,6 +207,14 @@ function EditProductModal({ p, cats, suppliers, maps, onClose, onReload }: {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">（不設定）</option>
                 {cats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">單位</label>
+              <select value={uomId} onChange={e => setUomId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">（不設定）</option>
+                {uoms.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
             <label className="flex items-center gap-3 cursor-pointer select-none">
@@ -297,6 +309,7 @@ export default function ProductsPage() {
   const nav = useNavigate();
   const [tmpls, setTmpls] = useState<Tmpl[]>([]);
   const [cats, setCats] = useState<Cat[]>([]);
+  const [uoms, setUoms] = useState<Uom[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [maps, setMaps] = useState<SupMap[]>([]);
   const [loading, setLoading] = useState(true);
@@ -309,9 +322,10 @@ export default function ProductsPage() {
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [ts, cs, sups, rawMaps] = await Promise.all([
+      const [ts, cs, uomRaw, sups, rawMaps] = await Promise.all([
         db.queryFiltered('product_templates', [{ column: 'active', op: 'eq', value: true }]),
         db.query('product_categories'),
+        db.query('uom_uom'),
         db.queryFiltered('suppliers', [{ column: 'active', op: 'eq', value: true }]),
         db.query('product_supplierinfo'),
       ]);
@@ -324,6 +338,7 @@ export default function ProductsPage() {
         acc.push({
           id: rid, name: String(r.name || ''),
           default_code: String(r.default_code || ''), categ_id: r.categ_id,
+          uom_id: r.uom_id,
           sale_ok: Boolean(r.sale_ok),
           defaultSupplierId: String(cd.default_supplier_id || ''),
           _cd: cd,
@@ -331,6 +346,7 @@ export default function ProductsPage() {
         return acc;
       }, []));
       setCats((cs || []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
+      setUoms((uomRaw || []).filter((r: any) => r.active !== false).map((r: any) => ({ id: String(r.id), name: String(r.name || '') })));
       setSuppliers(
         (sups || []).map((r: any) => ({ id: String(r.id), name: String(r.name || '') }))
           .sort((a: Supplier, b: Supplier) => a.name.localeCompare(b.name, 'zh-Hant'))
@@ -441,6 +457,7 @@ export default function ProductsPage() {
                     <th className="px-4 py-3 text-left">編碼</th>
                     <th className="px-4 py-3 text-left">品名</th>
                     <th className="px-4 py-3 text-left">分類</th>
+                    <th className="px-4 py-3 text-left">單位</th>
                     <th className="px-4 py-3 text-left">主供應商</th>
                     <th className="px-4 py-3 text-left">狀態</th>
                     <th className="px-4 py-3 text-right">操作</th>
@@ -454,6 +471,7 @@ export default function ProductsPage() {
                         <td className="px-4 py-3 text-xs text-gray-500">{p.default_code || '—'}</td>
                         <td className="px-4 py-3 font-medium text-gray-800">{p.name}</td>
                         <td className="px-4 py-3 text-gray-700">{catName(p.categ_id) || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600">{uoms.find(u => u.id === resolveId(p.uom_id))?.name || '—'}</td>
                         <td className="px-4 py-3">
                           {p.defaultSupplierId && supName(p.defaultSupplierId) ? (
                             <span className="inline-flex items-center gap-1 text-xs text-gray-700">
@@ -495,6 +513,7 @@ export default function ProductsPage() {
         <EditProductModal
           p={editingProduct}
           cats={cats}
+          uoms={uoms}
           suppliers={suppliers}
           maps={maps}
           onClose={() => setEditingProduct(null)}
