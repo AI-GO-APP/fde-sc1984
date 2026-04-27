@@ -56,3 +56,24 @@ rows = ctx.db.query_object("x_holiday_settings", limit=1000)
 - 回傳 flat dict（無 data wrapper）
 - x_ 表已 promote（app_id = null），任何 app action 皆可存取
 - 不需要建立 AppDataReference
+
+## ctx.db 完整方法（實測 2026-04-27）
+
+| 方法 | 存在 | 說明 |
+|------|------|------|
+| `ctx.db.query(table, limit=N, order_by=[...])` | ✅ | 標準 Odoo 表；x_ 表不可用 |
+| `ctx.db.query_object(table, limit=N)` | ✅ | x_ 自訂表專用 |
+| `ctx.db.insert(table, data)` | ✅ | 新增記錄 |
+| `ctx.db.update(table, id, data)` | ✅ | 更新記錄 |
+| `ctx.db.delete` | ❌ | 不存在，刪除只能走 proxy |
+
+**x_ 表用錯方法的錯誤**：`ctx.db.query("x_xxx")` 會拋 SQL transaction error，必須改用 `ctx.db.query_object`。
+
+## Action 端點（實測確認）
+
+| App 類型 | 端點 |
+|---------|------|
+| Admin（內部 app） | `POST /api/v1/actions/apps/{app_id}/run/{action_name}` |
+| Ordering（外部 app） | `POST /api/v1/ext/actions/run/{action_name}` |
+
+⚠️ Admin `db.ts` 的 `runAction` 原本 URL 格式錯誤（少了 `apps/`），已於 2026-04-27 修正。

@@ -43,8 +43,30 @@ python3 vfs/scripts/deploy_ordering.py
 ## 資料存取原則
 
 - **前端不准寫死任何資料**，所有資料一律 runtime 從資料庫讀取
-- Admin：Odoo 表透過 `/proxy/{APP_ID}/`，custom table 由 `db.ts` 動態查 UUID
-- **Ordering：所有資料庫操作一律透過 server-side action（Python ctx.db），禁止前端直接呼叫 `/ext/proxy/`**
-  - `/ext/proxy/` 對 x_ 自訂表及 `product_products` 均回傳 500
-  - action ctx.db 支援所有表，包含 x_ 前綴的 Odoo 自訂模型
+- Admin 與 Ordering 的**寫入、需身分過濾的讀取一律走 server-side action**
+- 純公開讀取（商品定義、分類、單位等）Admin 可繼續用 `/proxy/{APP_ID}/`
+- **Ordering：禁止前端直接呼叫 `/ext/proxy/`**（x_ 表及 `product_products` 均回傳 500）
 - 各 App 可存取的表與欄位由 `db_admin.py` / `db_ordering.py` 的 `REFS` 決定；新增欄位或表先改這兩個檔再部署
+
+## Server-Side Action 規範
+
+**Action 端點（實測確認）：**
+
+| App 類型 | URL |
+|---------|-----|
+| Admin（內部 app，Supabase JWT） | `POST /api/v1/actions/apps/{app_id}/run/{action_name}` |
+| Ordering（外部 app，Custom App User Token） | `POST /api/v1/ext/actions/run/{action_name}` |
+
+**ctx.db 可用方法（實測）：**
+
+| 方法 | 用途 | 備注 |
+|------|------|------|
+| `ctx.db.query(table, limit=N)` | 查標準 Odoo 表 | x_ 表不可用，會 error |
+| `ctx.db.query_object(table, limit=N)` | 查 x_ 自訂表 | 回傳 flat dict，不需 AppDataReference |
+| `ctx.db.insert(table, data)` | 新增記錄 | |
+| `ctx.db.update(table, id, data)` | 更新記錄 | |
+| `ctx.db.delete` | ❌ 不存在 | 刪除操作須另謀出路 |
+
+**前端呼叫（`db.ts` 的 `runAction`）：**
+- Admin 內部 app：`runAction('action_name', params)` → 走 `/actions/apps/{appId}/run/{name}`
+- ⚠️ `action.ts` 的 URL pattern 已修正（原本少了 `apps/`，app_id 位置錯誤）

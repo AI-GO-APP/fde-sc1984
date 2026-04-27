@@ -22,5 +22,8 @@
   },
   "create_product": {
     "description": "新增產品（product_templates）：name（必填）、default_code、categ_id，預設 sale_ok=false"
+  },
+  "ping_sandbox": {
+    "description": "測試 ctx.db 可用方法（query / update / delete / query_object），供開發診斷用"
   }
 }

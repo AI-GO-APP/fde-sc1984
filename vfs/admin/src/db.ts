@@ -159,7 +159,7 @@ export async function runAction(actionName: string, params: Record<string, any> 
   const isExternal = !!(window as any).__IS_EXTERNAL__;
   const url = isExternal
     ? `${API_BASE}/ext/actions/run/${actionName}`
-    : `${API_BASE}/actions/run/${appId}/${actionName}`;
+    : `${API_BASE}/actions/apps/${appId}/run/${actionName}`;
   const resp = await fetch(url, {
     method: 'POST', headers: _h(), credentials: 'include',
     body: JSON.stringify({ params }),
