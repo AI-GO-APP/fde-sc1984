@@ -45,10 +45,16 @@ def ensure_references(h, app_id, refs):
         print(f"  [{tn}] {s2}")
 
 
+_SKIP_DIRS = {"node_modules", ".git", "__pycache__", ".venv", "dist", ".cache"}
+_SKIP_FILES = {"package-lock.json", "yarn.lock", ".DS_Store"}
+
 def read_vfs(vfs_dir):
     vfs = {}
-    for root, _, files in os.walk(vfs_dir):
+    for root, dirs, files in os.walk(vfs_dir):
+        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
         for fname in files:
+            if fname in _SKIP_FILES:
+                continue
             full = os.path.join(root, fname)
             rel = os.path.relpath(full, vfs_dir).replace(os.sep, "/")
             with open(full, "r", encoding="utf-8") as f:
@@ -67,7 +73,7 @@ def upload_vfs(h, app_id, vfs):
 
 def publish_app(h, app_id):
     status, body = _req("POST", f"{API_BASE}/builder/apps/{app_id}/publish", h,
-                        {"published_assets": {}})
+                        {"published_assets": {}}, timeout=120)
     print(f"  發布: {status}")
     if status not in (200, 201):
         sys.exit(f"❌ 發布失敗：{body}")
