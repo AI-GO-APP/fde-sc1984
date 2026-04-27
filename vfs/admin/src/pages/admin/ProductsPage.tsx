@@ -165,18 +165,22 @@ export default function ProductsPage() {
   const supName = (id: string) => suppliers.find(s => s.id === id)?.name || '';
 
   const tabs = useMemo(() => {
-    const set = new Set<string>();
+    const map = new Map<string, string>();
     for (const p of tmpls) {
+      const id = resolveId(p.categ_id);
+      if (!id) continue;
       const name = catName(p.categ_id);
-      if (name) set.add(name);
+      if (name) map.set(id, name);
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
   }, [tmpls, cats]);
 
   const filtered = useMemo(() => {
     const kw = search.trim().toLowerCase();
     let list = [...tmpls].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant'));
-    if (activeTab !== ALL_TAB) list = list.filter(p => catName(p.categ_id) === activeTab);
+    if (activeTab !== ALL_TAB) list = list.filter(p => resolveId(p.categ_id) === activeTab);
     if (!kw) return list;
     return list.filter(p =>
       p.name.toLowerCase().includes(kw) ||
@@ -208,19 +212,7 @@ export default function ProductsPage() {
   const handleAddDone = async (catId: string) => {
     setShowAdd(false);
     await load();
-    if (catId) {
-      const cat = cats.find(c => c.id === catId);
-      if (cat && tabs.includes(cat.name)) setActiveTab(cat.name);
-      else {
-        setTimeout(() => {
-          setCats(prev => {
-            const found = prev.find(c => c.id === catId);
-            if (found) setActiveTab(found.name);
-            return prev;
-          });
-        }, 100);
-      }
-    }
+    if (catId) setActiveTab(catId);
   };
 
   // 供應商 modal 操作
@@ -312,15 +304,15 @@ export default function ProductsPage() {
 
       {tabs.length > 0 && (
         <div className="bg-white border-b border-gray-200 px-6">
-          <div className="flex gap-0 overflow-x-auto max-w-6xl mx-auto">
+          <div className="flex gap-2 overflow-x-auto scrollbar-none py-3 max-w-6xl mx-auto">
             <button onClick={() => setActiveTab(ALL_TAB)}
-              className={`py-3 px-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === ALL_TAB ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${activeTab === ALL_TAB ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               全部
             </button>
             {tabs.map(tab => (
-              <button key={tab} onClick={() => setActiveTab(tab)}
-                className={`py-3 px-4 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === tab ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                {tab}
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-colors ${activeTab === tab.id ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                {tab.name}
               </button>
             ))}
           </div>

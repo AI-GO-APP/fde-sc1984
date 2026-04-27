@@ -54,7 +54,7 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
         </div>
         <div className="cat-tabs">
           <button className={`cat-tab${activeCat === null ? " active" : ""}`} onClick={() => setActiveCat(null)}>全部</button>
-          {categories.map(c => <button key={c.id} className={`cat-tab${activeCat === c.id ? " active" : ""}`} onClick={() => setActiveCat(c.id)}>{c.name}</button>)}
+          {categories.map(c => <button key={c.id} className={`cat-tab${activeCat === String(c.id) ? " active" : ""}`} onClick={() => setActiveCat(String(c.id))}>{c.name}</button>)}
         </div>
       </div>
       <div className="product-grid">
