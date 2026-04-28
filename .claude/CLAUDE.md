@@ -65,7 +65,11 @@ python3 vfs/scripts/deploy_ordering.py
 | `ctx.db.query_object(table, limit=N)` | 查 x_ 自訂表 | 回傳 flat dict，不需 AppDataReference |
 | `ctx.db.insert(table, data)` | 新增記錄 | |
 | `ctx.db.update(table, id, data)` | 更新記錄 | |
-| `ctx.db.delete` | ❌ 不存在 | 刪除操作須另謀出路 |
+| `ctx.db.remove(table, row_id)` | 硬刪除，回傳 `{"success": True}` | 方法名是 remove，不是 delete |
+
+**軟刪除**：平台沒有通用軟刪除 API，直接 `ctx.db.update(table, id, {"active": false})` 即可。
+
+**前端刪除**：`db.ts` 的 `deleteRow` 走 `DELETE /proxy/{app_id}/{table}/{id}`，同樣支援。
 
 **前端呼叫（`db.ts` 的 `runAction`）：**
 - Admin 內部 app：`runAction('action_name', params)` → 走 `/actions/apps/{appId}/run/{name}`
