@@ -98,7 +98,12 @@ export default function EmployeesPage() {
 
   const submit = async () => {
     if (!form.name.trim()) { setFormError('姓名為必填'); return; }
-    if (form.work_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.work_email.trim())) { setFormError('Email 格式不正確'); return; }
+    const emailTrim = form.work_email.trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) { setFormError('Email 格式不正確'); return; }
+    if (emailTrim) {
+      const dup = employees.find(e => e.work_email.toLowerCase() === emailTrim.toLowerCase() && e.id !== editingId);
+      if (dup) { setFormError(`此 Email 已被「${dup.name}」使用`); return; }
+    }
     setSaving(true); setFormError('');
     try {
       const data: Record<string, any> = {
