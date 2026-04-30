@@ -43,12 +43,12 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
           <span className="date-label">配送日期</span>
           <div className="date-chips">
             {availableDates.map(d => {
-              const dateQty = cart.filter(i => i.deliveryDate === d).reduce((s, i) => s + i.qty, 0);
+              const itemCount = cart.filter(i => i.deliveryDate === d && i.qty > 0).length;
               return (
                 <button key={d} className={`date-chip${deliveryDate === d ? " active" : ""}`}
                   onClick={() => setDeliveryDate(d)} style={{ position: "relative" }}>
                   {fmtDateChip(d)}
-                  {dateQty > 0 && <span className="date-chip-badge">{dateQty % 1 === 0 ? dateQty : dateQty.toFixed(1)}</span>}
+                  {itemCount > 0 && <span className="date-chip-badge">{itemCount}</span>}
                 </button>
               );
             })}
