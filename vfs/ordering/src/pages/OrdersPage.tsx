@@ -44,12 +44,13 @@ function canEditOrder(order: any, cutoffTime: string, lines: any[]): boolean {
 
 interface OrderWithLines { order: any; lines: any[]; }
 
-export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoffTime: string }) {
+export default function OrdersPage({ user, cutoffTime, defaultNoteMap, setProductDefaultNote }: { user: AppUser; cutoffTime: string; defaultNoteMap: Record<string, string>; setProductDefaultNote: (tmplId: string, note: string) => void; }) {
   const [items, setItems] = useState<OrderWithLines[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorInfo, setErrorInfo] = useState("");
   const [editOrderId, setEditOrderId] = useState<string | null>(null);
   const [editQtys, setEditQtys] = useState<Record<string, number>>({});
+  const [editNotes, setEditNotes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [sortBy, setSortBy] = useState<"delivery_date" | "order_date">("delivery_date");
@@ -73,8 +74,12 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
 
   const startEdit = (o: any, lines: any[]) => {
     const qtys: Record<string, number> = {};
-    for (const l of lines) qtys[l.id] = Number(l.product_uom_qty || 0);
-    setEditQtys(qtys); setEditOrderId(o.id);
+    const notes: Record<string, string> = {};
+    for (const l of lines) {
+      qtys[l.id] = Number(l.product_uom_qty || 0);
+      notes[l.id] = ((l.custom_data && typeof l.custom_data === "object") ? l.custom_data.note : "") || "";
+    }
+    setEditQtys(qtys); setEditNotes(notes); setEditOrderId(o.id);
   };
 
   const saveEdit = async (orderId: string, lines: any[]) => {
@@ -82,7 +87,11 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
     try {
       await db.runAction("update_order_lines", {
         order_id: orderId,
-        lines: lines.map(l => ({ id: l.id, qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0) })),
+        lines: lines.map(l => {
+          const curNote = ((l.custom_data && typeof l.custom_data === "object") ? l.custom_data.note : "") || "";
+          const nextNote = editNotes[l.id] ?? curNote;
+          return { id: l.id, qty: editQtys[l.id] ?? Number(l.product_uom_qty || 0), note: nextNote };
+        }),
       });
       const refreshed = await db.runAction("get_orders", { user_email: user.email });
       const updated = (refreshed?.orders ?? []).find((i: any) => String(i.order.id) === String(orderId));
@@ -152,8 +161,10 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
         </div>
         {remark && <div className="order-remark">📝 {remark}</div>}
         {lines.length > 0 && (
-          <table className="order-lines"><thead><tr><th>品項</th><th>數量</th><th>單價</th></tr></thead>
-            <tbody>{lines.map((l: any) => (
+          <table className="order-lines"><thead><tr><th>品項</th><th>數量</th><th>單價</th><th>備註</th></tr></thead>
+            <tbody>{lines.map((l: any) => {
+              const lineNote = ((l.custom_data && typeof l.custom_data === "object") ? l.custom_data.note : "") || "";
+              return (
               <tr key={l.id}>
                 <td>{String(l.name || l.id || "")}</td>
                 <td>{isEditing ? (
@@ -161,10 +172,33 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
                     onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setEditQtys(prev => ({ ...prev, [l.id]: v as any })); }}
                     onBlur={e => setEditQtys(prev => ({ ...prev, [l.id]: parseFloat(e.target.value) || 0 }))}
                     style={{ width:"64px", padding:"2px 6px", border:"1px solid #d1d5db", borderRadius:"4px", fontSize:"14px", textAlign:"right" }} />
-                ) : (Number(l.product_uom_qty) > 0 ? fmtQty(Number(l.product_uom_qty)) : "—")}
+                ) : (Number(l.product_uom_qty) > 0 ? fmtQty(Number(l.product_uom_qty)) : "—")}</td>
                 <td>{Number(l.price_unit) > 0 ? `$${Number(l.price_unit).toLocaleString()}` : "—"}</td>
-              </tr>
-            ))}</tbody>
+                <td style={{ color: "#6b7280", fontSize: 12 }}>
+                  {isEditing ? (() => {
+                    const tmplId = String(l.product_template_id || l.product_id || "");
+                    const curNote = (editNotes[l.id] ?? lineNote) || "";
+                    const matches = (defaultNoteMap[tmplId] || "") === curNote.trim() && curNote.trim().length > 0;
+                    return (
+                      <div style={{ display:"flex", alignItems:"center", gap:4 }}>
+                        <input type="text" value={curNote}
+                          onChange={e => setEditNotes(prev => ({ ...prev, [l.id]: e.target.value }))}
+                          placeholder="備註"
+                          style={{ flex:1, minWidth:0, padding:"2px 6px", border:"1px solid #d1d5db", borderRadius:"4px", fontSize:"12px" }} />
+                        {tmplId && curNote.trim() && !matches && (
+                          <button type="button"
+                            onClick={() => setProductDefaultNote(tmplId, curNote)}
+                            title="把目前備註設為此品項的常用"
+                            style={{ fontSize:11, color:"#6b7280", background:"transparent", border:"1px solid #d1d5db", borderRadius:6, padding:"2px 5px", cursor:"pointer", whiteSpace:"nowrap" }}>
+                            設為常用
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })() : (lineNote || "—")}
+                </td>
+              </tr>);
+            })}</tbody>
           </table>
         )}
         {isEditing && (

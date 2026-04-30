@@ -19,9 +19,13 @@ interface Props {
   note: string; onNoteChange: (n: string) => void;
   isSubmitting: boolean; onSubmit: () => void;
   setDeliveryDate: (d: string) => void; onNavigate: (p: string) => void;
+  defaultNoteMap: Record<string, string>;
+  itemNotes: Record<string, string>;
+  setItemNote: (productId: string, note: string) => void;
+  setAsDefault: (productId: string, note: string) => void;
 }
 
-export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, addToCart, setCartExact, note, onNoteChange, isSubmitting, onSubmit, setDeliveryDate, onNavigate }: Props) {
+export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, addToCart, setCartExact, note, onNoteChange, isSubmitting, onSubmit, setDeliveryDate, onNavigate, defaultNoteMap, itemNotes, setItemNote, setAsDefault }: Props) {
   const groupTotal = items.reduce((sum, item) => sum + (priceMap[item.productId]?.price ?? 0) * item.qty, 0);
   const hasPrice = items.some(item => !!(priceMap[item.productId]));
   return (
@@ -35,32 +39,50 @@ export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, 
           const tmpl = tmplMap[item.productId];
           const pi = priceMap[item.productId];
           const subtotal = pi ? pi.price * item.qty : null;
+          const effectiveNote = itemNotes[item.productId] ?? defaultNoteMap[item.productId] ?? "";
+          const hasDefault = !!defaultNoteMap[item.productId];
+          const matchesDefault = (defaultNoteMap[item.productId] || "") === effectiveNote.trim() && effectiveNote.trim().length > 0;
           return (
-            <div key={item.productId} className="cart-item" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
-              <div className="cart-item-info">
-                <span className="product-code">{tmpl?.default_code || ""}</span>
-                <span className="product-name">{tmpl?.name || item.productId}</span>
-                {pi && subtotal !== null && (
-                  <span className="cart-price-summary">
-                    ${pi.price} × {item.qty} = <strong>${Math.round(subtotal * 100) / 100}</strong>
-                  </span>
-                )}
+            <div key={item.productId} className="cart-item" style={{ flexDirection: "column", alignItems: "stretch", gap: 6, borderRadius: 0, borderLeft: "none", borderRight: "none", borderTop: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+                <div className="cart-item-info" style={{ flex: 1, minWidth: 0 }}>
+                  <span className="product-code">{tmpl?.default_code || ""}</span>
+                  <span className="product-name">{tmpl?.name || item.productId}</span>
+                  {pi && subtotal !== null && (
+                    <span className="cart-price-summary">
+                      ${pi.price} × {item.qty} = <strong>${Math.round(subtotal * 100) / 100}</strong>
+                    </span>
+                  )}
+                </div>
+                <div className="qty-control">
+                  <button className="qty-btn" onClick={() => addToCart(item.productId, -1, date)}><Minus size={14} /></button>
+                  <input type="number" step="0.1" className="qty-input" value={item.qty}
+                    onChange={e => setCartExact(item.productId, parseFloat(e.target.value), date)} />
+                  <button className="qty-btn add" onClick={() => addToCart(item.productId, 1, date)}><Plus size={14} /></button>
+                  <span className="qty-unit">{uomMap[tmpl?.uom_id ?? ""] || "件"}</span>
+                  <button className="qty-btn" style={{ border: "1px solid #ef4444", color: "#ef4444" }}
+                    onClick={() => setCartExact(item.productId, 0, date)}><Trash2 size={14} /></button>
+                </div>
               </div>
-              <div className="qty-control">
-                <button className="qty-btn" onClick={() => addToCart(item.productId, -1, date)}><Minus size={14} /></button>
-                <input type="number" step="0.1" className="qty-input" value={item.qty}
-                  onChange={e => setCartExact(item.productId, parseFloat(e.target.value), date)} />
-                <button className="qty-btn add" onClick={() => addToCart(item.productId, 1, date)}><Plus size={14} /></button>
-                <span className="qty-unit">{uomMap[tmpl?.uom_id ?? ""] || "件"}</span>
-                <button className="qty-btn" style={{ border: "1px solid #ef4444", color: "#ef4444" }}
-                  onClick={() => setCartExact(item.productId, 0, date)}><Trash2 size={14} /></button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 4 }}>
+                <input type="text" placeholder={hasDefault ? "預設備註：" + defaultNoteMap[item.productId] : "本項備註（選填）"}
+                  value={effectiveNote} onChange={e => setItemNote(item.productId, e.target.value)}
+                  style={{ flex: 1, fontSize: 12, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 6, color: "#374151" }} />
+                {effectiveNote.trim() && !matchesDefault && (
+                  <button type="button"
+                    onClick={() => setAsDefault(item.productId, effectiveNote)}
+                    title="把目前備註設為此品項的常用"
+                    style={{ fontSize: 11, color: "#6b7280", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "2px 6px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                    設為常用
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
       <div style={{ padding: "8px 14px", background: "#fff" }}>
-        <button onClick={() => { setDeliveryDate(date); onNavigate("/order"); }}
+        <button onClick={() => { setDeliveryDate(date); onNavigate("/products"); }}
           style={{ width: "100%", padding: "8px", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "#fff", color: "#6b7280", fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>
           + 繼續選購
         </button>

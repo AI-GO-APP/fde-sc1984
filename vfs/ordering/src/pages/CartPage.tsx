@@ -19,12 +19,23 @@ interface Props {
   user: AppUser;
   priceMap: Record<string, PriceEntry>;
   allTemplates: Product[];
+  defaultNoteMap: Record<string, string>;
+  setProductDefaultNote: (tmplId: string, note: string) => void;
 }
 
-export default function CartPage({ cart, addToCart, setCartExact, clearCartDate, onNavigate, setDeliveryDate, uomMap, user, priceMap, allTemplates }: Props) {
+export default function CartPage({ cart, addToCart, setCartExact, clearCartDate, onNavigate, setDeliveryDate, uomMap, user, priceMap, allTemplates, defaultNoteMap, setProductDefaultNote }: Props) {
   const [groupNotes, setGroupNotes] = useState<Record<string, string>>({});
+  const [itemNotes, setItemNotes] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; error: boolean } | null>(null);
+
+  const setItemNote = (productId: string, note: string) => setItemNotes(prev => ({ ...prev, [productId]: note }));
+  const setAsDefault = (productId: string, note: string) => {
+    const trimmed = (note || "").trim();
+    if (!trimmed) return;
+    setProductDefaultNote(productId, trimmed);
+    showToast("已設為常用備註 ⭐");
+  };
 
   const tmplMap = useMemo(() => {
     const m: Record<string, Product> = {};
@@ -63,6 +74,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
           product_name: tmplMap[item.productId]?.name ?? "",
           qty: item.qty,
           price_unit: priceMap[item.productId]?.price ?? 0,
+          note: (itemNotes[item.productId] ?? defaultNoteMap[item.productId] ?? "").trim(),
         })),
       });
       if (result?.error) throw new Error(result.error);
@@ -80,7 +92,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
     return (
       <div className="empty-cart">
         <p>🛒 購物車是空的</p>
-        <button className="login-btn" onClick={() => onNavigate("/order")}>去點餐</button>
+        <button className="login-btn" onClick={() => onNavigate("/products")}>去點餐</button>
       </div>
     );
   }
@@ -93,7 +105,9 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
           addToCart={addToCart} setCartExact={setCartExact}
           note={groupNotes[date] || ""} onNoteChange={n => setGroupNotes(prev => ({ ...prev, [date]: n }))}
           isSubmitting={submitting === date} onSubmit={() => handleSubmit(date)}
-          setDeliveryDate={setDeliveryDate} onNavigate={onNavigate} />
+          setDeliveryDate={setDeliveryDate} onNavigate={onNavigate}
+          defaultNoteMap={defaultNoteMap} itemNotes={itemNotes} setItemNote={setItemNote}
+          setAsDefault={setAsDefault} />
       ))}
     </div>
   );

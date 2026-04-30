@@ -13,7 +13,7 @@
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(__file__))
-from deploy_lib import require_env, login, ensure_references, read_vfs, upload_vfs, publish_app
+from deploy_lib import require_env, login, ensure_references, read_vfs, upload_vfs, verify_compile, publish_app
 from db_ordering import REFS
 
 VFS_DIR = os.path.join(os.path.dirname(__file__), "..", "ordering")
@@ -33,14 +33,17 @@ def main():
     print("\n[2/4] 設定 DB References...")
     ensure_references(h, app_id, REFS)
 
-    print("\n[3/4] 讀取並上傳 VFS...")
+    print("\n[3/5] 讀取並上傳 VFS...")
     upload_vfs(h, app_id, read_vfs(VFS_DIR))
+
+    print("\n[4/5] 編譯驗證...")
+    verify_compile(h, app_id)
 
     if no_publish:
         print("\n⏭️  略過發布（--no-publish），可用 use_dev=true 測試 action")
         print(f"   endpoint: POST /api/v1/actions/apps/{app_id}/execute-by-name?action_name=<name>&use_dev=true")
     else:
-        print("\n[4/4] 發布...")
+        print("\n[5/5] 發布...")
         publish_app(h, app_id)
         print("\n✅ Ordering 部署完成")
 

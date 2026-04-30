@@ -2,7 +2,6 @@ import React from "react";
 import { CartItem, PriceEntry, AppUser } from "../App";
 import { ProductCard, SkeletonCard, Product } from "./CatalogProductCard";
 import { useCatalogData, Category } from "./useCatalogData";
-import { useFavorites } from "./useFavorites";
 
 const DAY_NAMES = ["日","一","二","三","四","五","六"];
 function toYMD(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
@@ -29,10 +28,10 @@ interface Props {
   deliveryDate: string; setDeliveryDate: (d: string) => void;
   holidays: Set<string>; priceMap: Record<string, PriceEntry>;
   allTemplates: Product[]; categories: Category[]; configLoaded: boolean;
+  favoriteSet: Set<string>; toggleFavorite: (tmplId: string) => void;
 }
 
-export default function CatalogPage({ user, cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, priceMap, allTemplates, categories, configLoaded }: Props) {
-  const { favoriteSet, toggleFavorite } = useFavorites(user.id);
+export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, priceMap, allTemplates, categories, configLoaded, favoriteSet, toggleFavorite }: Props) {
   const { activeCat, setActiveCat, search, handleSearch, visibleProducts } = useCatalogData(allTemplates, categories, favoriteSet);
   const availableDates = configLoaded ? getAvailableDates(holidays) : [];
 

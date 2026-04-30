@@ -50,14 +50,18 @@ def execute(ctx):
         return
 
     for item in items:
-        result = ctx.db.insert("sale_order_lines", {
+        line_payload = {
             "order_id": order_id,
             "product_template_id": item.get("product_template_id"),
             "name": item.get("product_name", ""),
             "product_uom_qty": item.get("qty", 1),
             "price_unit": item.get("price_unit", 0),
             "delivery_date": today,
-        })
+        }
+        line_note = (item.get("note") or "").strip()
+        if line_note:
+            line_payload["custom_data"] = {"note": line_note}
+        result = ctx.db.insert("sale_order_lines", line_payload)
         if not result or not result.get("id"):
             ctx.response.json({"error": f"明細建立失敗：{item.get('product_name')}"})
             return

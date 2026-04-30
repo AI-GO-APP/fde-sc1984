@@ -1,35 +1,77 @@
 import { useState, useEffect, useCallback } from "react";
 import { runAction } from "../db";
 
+interface FavRecord {
+  id: string;
+  product_tmpl_id: string;
+  default_note?: string;
+}
+
 export function useFavorites(customerId: string) {
-  const [favoriteMap, setFavoriteMap] = useState<Record<string, string>>({});
+  const [recordMap, setRecordMap] = useState<Record<string, FavRecord>>({});
 
   useEffect(() => {
+    if (!customerId) return;
     runAction("manage_favorites", { op: "list", customer_id: customerId })
       .then((d: any) => {
-        const map: Record<string, string> = {};
-        for (const r of (d.favorites ?? [])) map[String(r.product_tmpl_id)] = String(r.id);
-        setFavoriteMap(map);
+        const map: Record<string, FavRecord> = {};
+        for (const r of (d?.favorites ?? [])) {
+          const tid = String(r.product_tmpl_id || "");
+          if (!tid) continue;
+          map[tid] = { id: String(r.id), product_tmpl_id: tid, default_note: r.default_note || "" };
+        }
+        setRecordMap(map);
       })
       .catch(() => {});
   }, [customerId]);
 
   const toggleFavorite = useCallback(async (tmplId: string) => {
-    const existing = favoriteMap[tmplId];
+    const existing = recordMap[tmplId];
     if (existing) {
-      setFavoriteMap(prev => { const n = { ...prev }; delete n[tmplId]; return n; });
-      runAction("manage_favorites", { op: "remove", record_id: existing })
-        .catch(() => setFavoriteMap(prev => ({ ...prev, [tmplId]: existing })));
+      const removed = existing;
+      setRecordMap(prev => { const n = { ...prev }; delete n[tmplId]; return n; });
+      runAction("manage_favorites", { op: "remove", record_id: existing.id })
+        .catch(() => setRecordMap(prev => ({ ...prev, [tmplId]: removed })));
     } else {
-      setFavoriteMap(prev => ({ ...prev, [tmplId]: "pending" }));
+      const tempId = "pending-" + tmplId;
+      setRecordMap(prev => ({ ...prev, [tmplId]: { id: tempId, product_tmpl_id: tmplId, default_note: "" } }));
       runAction("manage_favorites", { op: "add", customer_id: customerId, product_tmpl_id: tmplId })
         .then((d: any) => {
-          const id = String(d.record?.id ?? d.id ?? "");
-          setFavoriteMap(prev => ({ ...prev, [tmplId]: id }));
+          const id = String(d?.record?.id ?? "");
+          if (!id) return;
+          setRecordMap(prev => ({ ...prev, [tmplId]: { id, product_tmpl_id: tmplId, default_note: prev[tmplId]?.default_note || "" } }));
         })
-        .catch(() => setFavoriteMap(prev => { const n = { ...prev }; delete n[tmplId]; return n; }));
+        .catch(() => setRecordMap(prev => { const n = { ...prev }; delete n[tmplId]; return n; }));
     }
-  }, [customerId, favoriteMap]);
+  }, [customerId, recordMap]);
 
-  return { favoriteSet: new Set(Object.keys(favoriteMap)), toggleFavorite };
+  const setProductDefaultNote = useCallback(async (tmplId: string, note: string) => {
+    const cleanNote = (note || "").trim();
+    const existing = recordMap[tmplId];
+    setRecordMap(prev => ({
+      ...prev,
+      [tmplId]: { id: existing?.id || ("pending-" + tmplId), product_tmpl_id: tmplId, default_note: cleanNote },
+    }));
+    try {
+      const r = await runAction("manage_favorites", {
+        op: "set_note",
+        customer_id: customerId,
+        product_tmpl_id: tmplId,
+        record_id: existing?.id?.startsWith("pending-") ? "" : (existing?.id || ""),
+        default_note: cleanNote,
+      });
+      const rid = String(r?.record_id || "");
+      if (rid) {
+        setRecordMap(prev => ({ ...prev, [tmplId]: { id: rid, product_tmpl_id: tmplId, default_note: cleanNote } }));
+      }
+    } catch {}
+  }, [customerId, recordMap]);
+
+  const favoriteSet = new Set(Object.keys(recordMap));
+  const defaultNoteMap: Record<string, string> = {};
+  for (const [tid, r] of Object.entries(recordMap)) {
+    if (r.default_note) defaultNoteMap[tid] = r.default_note;
+  }
+
+  return { favoriteSet, toggleFavorite, defaultNoteMap, setProductDefaultNote };
 }

@@ -6,7 +6,7 @@ import json, os, sys, urllib.request, urllib.error
 
 API_BASE = "https://ai-go.app/api/v1"
 ADMIN_APP = "6d1b56d0-0b54-4bda-8d41-9bf201d0cb78"
-ORDERING_APP = os.environ.get("ORDERING_APP_ID", "")
+ORDERING_APP = os.environ.get("ORDERING_APP_ID", "fe9c0a29-d8c0-4129-b2c1-f3d0dc57c958")
 
 
 def _req(method, url, headers, data=None, timeout=30):

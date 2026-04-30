@@ -1,7 +1,7 @@
 def execute(ctx):
-    """修改訂單明細數量，並重算 sale_orders.amount_total。
-    params: { order_id: str, lines: [{id: str, qty: number}] }
-    後端以 admin 身份執行，繞過 ext/proxy 的欄位限制。
+    """修改訂單明細數量與備註，並重算 sale_orders.amount_total。
+    params: { order_id: str, lines: [{id: str, qty: number, note?: str}] }
+    note 寫入 sale_order_lines.custom_data.note（保留其他既有 custom_data 欄位）。
     """
     order_id = ctx.params.get("order_id", "")
     lines = ctx.params.get("lines", [])
@@ -10,12 +10,21 @@ def execute(ctx):
         ctx.response.json({"error": "缺少必要參數"})
         return
 
-    # 建立 id → qty 對照表
-    qty_map = {item["id"]: item["qty"] for item in lines if item.get("id") is not None}
+    line_updates = {item["id"]: item for item in lines if item.get("id") is not None}
 
-    for line_id, qty in qty_map.items():
+    # 取得現有 lines 以保留 custom_data 其他欄位
+    existing = ctx.db.query("sale_order_lines", limit=500) or []
+    existing_by_id = {str(l.get("id")): l for l in existing}
+
+    for line_id, payload in line_updates.items():
         try:
-            ctx.db.update("sale_order_lines", line_id, {"product_uom_qty": qty})
+            patch = {"product_uom_qty": payload.get("qty", 0)}
+            if "note" in payload:
+                cur = existing_by_id.get(str(line_id), {}).get("custom_data") or {}
+                if not isinstance(cur, dict):
+                    cur = {}
+                patch["custom_data"] = {**cur, "note": (payload.get("note") or "").strip()}
+            ctx.db.update("sale_order_lines", line_id, patch)
         except Exception as e:
             ctx.response.json({"error": f"更新明細 {line_id} 失敗：{str(e)}"})
             return
@@ -44,4 +53,4 @@ def execute(ctx):
     order = next((o for o in (all_orders or []) if str(o.get("id")) == str(order_id)), None)
     confirmed_total = float(order.get("amount_total") or 0) if order else amount_total
 
-    ctx.response.json({"updated": len(qty_map), "amount_total": confirmed_total})
+    ctx.response.json({"updated": len(line_updates), "amount_total": confirmed_total})

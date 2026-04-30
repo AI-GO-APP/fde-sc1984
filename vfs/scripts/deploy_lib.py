@@ -71,6 +71,21 @@ def upload_vfs(h, app_id, vfs):
         sys.exit(f"❌ 上傳失敗：{body}")
 
 
+def verify_compile(h, app_id):
+    """編譯一次抓 TS/JSX 錯誤；compile 200 但 success=false 也視為失敗。
+    依規範 post_deploy_verify：上傳/發布 status 200 不等於 runtime OK。"""
+    s, b = _req("GET", f"{API_BASE}/builder/apps/{app_id}", h)
+    if s != 200:
+        sys.exit(f"❌ 取得 app slug 失敗：{s}")
+    slug = (b or {}).get("slug") or app_id
+    s2, body = _req("POST", f"{API_BASE}/compile/compile/{slug}", h, {}, timeout=120)
+    success = bool((body or {}).get("success"))
+    print(f"  編譯驗證: {s2} success={success}")
+    if not success:
+        err = (body or {}).get("error") or body
+        sys.exit(f"❌ 編譯失敗：\n{err}")
+
+
 def publish_app(h, app_id):
     status, body = _req("POST", f"{API_BASE}/builder/apps/{app_id}/publish", h,
                         {"published_assets": {}}, timeout=120)
