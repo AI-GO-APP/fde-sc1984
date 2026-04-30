@@ -4,6 +4,7 @@ import InvitePage from "./pages/InvitePage";
 import CatalogPage from "./pages/CatalogPage";
 import CartPage from "./pages/CartPage";
 import OrdersPage from "./pages/OrdersPage";
+import PickingsPage from "./pages/PickingsPage";
 import BottomNav from "./components/BottomNav";
 import * as db from "./db";
 import { Category } from "./pages/useCatalogData";
@@ -55,7 +56,7 @@ function loadCart(): CartItem[] {
 export interface AppUser { id: string; email: string; display_name?: string; }
 export interface PriceEntry { price: number; date: string; }
 
-const VALID_PATHS = ["/products", "/cart", "/orders"];
+const VALID_PATHS = ["/products", "/cart", "/orders", "/pickings"];
 function getPath(): string {
   const h = window.location.hash.replace(/^#/, "");
   return VALID_PATHS.includes(h) ? h : "/products";
@@ -194,6 +195,7 @@ export default function App() {
     "/products": <CatalogPage user={user!} cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} priceMap={priceMap} allTemplates={allTemplates} categories={categories} configLoaded={configLoaded} />,
     "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} allTemplates={allTemplates} />,
     "/orders": <OrdersPage user={user!} cutoffTime={cutoffTime} />,
+    "/pickings": <PickingsPage user={user!} />,
   };
 
   return (

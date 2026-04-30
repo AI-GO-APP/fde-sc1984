@@ -334,6 +334,12 @@ AI GO 不讓 Custom App 透過 `/proxy/` 讀 `users` 表。前端要顯示「業
   - `product_id`, `product_template_id`, `product_uom_qty`, `price_unit`
   - **`delivery_date`** 預交貨日（**每 line 各自，支援同單分日出貨**）
   - `qty_delivered`（出貨量），`price_subtotal`, `sequence`
+  - **`name`** Odoo 慣用「商品描述」欄位（會印在 quotation/picking/invoice），**不得 overload 為使用者備註**
+  - **行備註存 `custom_data.note`**（jsonb），新增/編輯訂單行時寫入；確認訂單時抄到對應 `stock_move.custom_data.note`
+- **價格不再由 procurement 即時連動回填 sale_order_lines**：
+  - 原 `ProcurementPage` 改價時 `db.update('sale_order_lines', ..., {price_unit})` 已停用
+  - 改在「確認接受訂單」server action 內，從 `x_product_product_price_log` 取最新價快照寫入 `stock_move.price_unit`，**不回寫 sale_order_lines.price_unit**
+  - 訂單行的 `price_unit` 維持下單當時的報價，銷貨單行的 `price_unit` 是出貨當時的實價
 
 ### 0.11 StockPicking / StockMove（出貨 / 移動）
 
@@ -348,8 +354,13 @@ AI GO 不讓 Custom App 透過 `/proxy/` 讀 `users` 表。前端要顯示「業
   - `batch_id → stock_picking_batches.id`（批次排車用）
 - **StockMove**（出貨單裡的每個物件移動）
   - `picking_id → stock_pickings.id`
-  - `product_id`, `product_uom_qty`, `quantity`
+  - `product_id`, `product_uom_qty`（訂購量）, `quantity`（實送量）
+  - **`price_unit`** 出貨當時的單價快照（從 `x_product_product_price_log` 取最新值寫入）
   - **`sale_line_id → sale_order_lines.id`**（回連訂單行，用來記「這個 line 的貨由這個 move 送」）
+  - **`custom_data.note`** 抄自 `sale_order_lines.custom_data.note`（行備註）
+- **建立時機與機制**：由「確認接受訂單」server action 在 sale_order state 從 `draft` → `sale` 時**手動 INSERT**。
+  - 依 `demo/INTEGRATION_GUIDE.md:247`：Proxy API 不觸發 Odoo Workflow 自動化，state 變更不會自動產生 picking，必須在 action 內顯式建立。
+  - 首次上線時，`picking_type_id` / `location_id` / `location_dest_id` 在本專案無預設值，server action 內**先隨意寫入**（待後續正名 stock_locations / stock_picking_types 後再校正）。
 
 ### 0.12 PurchaseOrder / PurchaseOrderLine（採購訂單）
 
@@ -362,6 +373,7 @@ AI GO 不讓 Custom App 透過 `/proxy/` 讀 `users` 表。前端要顯示「業
 - **AI GO 原生**。每張業務表（含 sale_orders、sale_order_lines、product_products 等）INSERT/UPDATE/DELETE 都由 DB trigger 自動寫入
 - 欄位：`tenant_id`, `actor_id → users.id`, `table_name`, `operation`, `record_id`, `old_data` JSONB, `new_data` JSONB
 - **查詢走 `GET /api/v1/audit`**，不走 `/proxy/`
+- **效能風險（已提報 AI-GO）**：`audit_logs` 目前**沒有** `(table_name, record_id)` / `(table_name, created_at)` 複合索引，大量歷史回溯查詢可能慢。AI-GO 已將補索引列入下個 sprint。完成前，價格歷史查詢**不直接打 audit_logs**，繼續用 `x_product_product_price_log`（見 §1.2）
 
 ### 0.14 IrConfigParameter（系統設定）
 
@@ -597,7 +609,7 @@ WHERE rel.custom_app_user_id = :ctx_user_id
 
 | Custom Table | 目前存在 | 保留理由 / 下架計畫 |
 |---|---|---|
-| `x_product_product_price_log` | ✅ | **下架**，改用 `/api/v1/audit?table_name=product_products` |
+| `x_product_product_price_log` | ✅ | **保留**。原規劃改用 audit_logs，但 AI-GO 端缺 `(table_name, record_id)` 複合索引（已提報，下個 sprint 補），補完並實測效能可接受後再評估遷移。同時作為「確認接受訂單」action 取最新實價快照寫入 `stock_move.price_unit` 的來源 |
 | `x_order_audit_log` | 📋 原規劃未實作 | **不需要**，改用 `/api/v1/audit?table_name=sale_orders` |
 | `x_app_settings` | ✅ | **下架**，改用 `ir_config_parameters` |
 | `x_holiday_settings` | ✅ | **下架**，改用 `hr_leave_mandatory_days`（原生支援日期區間；無副作用，因本專案不啟用 HR 請假流程） |
@@ -679,20 +691,31 @@ WHERE rel.custom_app_user_id = :ctx_user_id
 |---|---|---|---|
 | 列出訂單（按日期、狀態） | POST query | `/proxy/{app}/sale_orders/query` | `sale_orders` |
 | 建立訂單（Ordering 前端走 action） | action | `POST /ext/actions/{slug}/place_order` | `sale_orders`, `sale_order_lines` |
-| 確認訂單 | PATCH | `/proxy/{app}/sale_orders/{id}` `{state: 'sale'}` | `sale_orders` |
+| 確認訂單（admin/daily/sales-orders） | action | `POST /actions/apps/{admin_app}/run/confirm_order` | `sale_orders` (state→sale) + `stock_pickings` + `stock_moves`（手動 INSERT） |
 | 訂單明細查詢 | POST query | `/proxy/{app}/sale_order_lines/query` | `sale_order_lines` |
 | 更新 line 數量 / 價格 | PATCH | `/proxy/{app}/sale_order_lines/{id}` | `sale_order_lines` |
 
 ### 2.7 Stock Picking（出貨）
 
+**Admin 端**
+
 | 操作 | HTTP | 端點 | 資料表 |
 |---|---|---|---|
 | 列出某日出貨單 | POST query | `/proxy/{app}/stock_pickings/query` filters: `scheduled_date`, `state` | `stock_pickings` |
-| 建立出貨單（確認訂單時） | POST | `/proxy/{app}/stock_pickings` | `stock_pickings` + `stock_moves` |
+| 建立出貨單（確認訂單時，由 `confirm_order` action 內部呼叫） | POST | `/proxy/{app}/stock_pickings` + `/proxy/{app}/stock_moves` | `stock_pickings` + `stock_moves` |
 | 指派 / 改派司機 | PATCH | `/proxy/{app}/stock_pickings/{id}` `{user_id}` | `stock_pickings` |
 | 完成出貨 | PATCH | `/proxy/{app}/stock_pickings/{id}` `{state:'done', date_done}` | `stock_pickings` |
 | 批次排車 | POST | `/proxy/{app}/stock_picking_batches` | `stock_picking_batches` |
 | 指派 picking 到 batch | PATCH | `/proxy/{app}/stock_pickings/{id}` `{batch_id}` | `stock_pickings` |
+
+**Ordering 端（銷貨單 tab）**
+
+| 操作 | HTTP | 端點 | 資料表 |
+|---|---|---|---|
+| 列出本人客戶的銷貨單 | POST query | `/ext/proxy/stock_pickings/query` filters: `customer_id`, `state` | `stock_pickings` (read-only) |
+| 列出某銷貨單明細 | POST query | `/ext/proxy/stock_moves/query` filters: `picking_id` | `stock_moves` (read-only) |
+
+> Ordering app 在訂單 tab 旁新增「銷貨單」tab，UI 顯示出貨日、品項、實送量（`stock_moves.quantity`）、單價（`stock_moves.price_unit`，出貨當下實價）、行備註（`stock_moves.custom_data.note`）。
 
 ### 2.8 Purchase
 
@@ -1002,9 +1025,13 @@ Admin 首頁路由架構：
 4. 以新頁面取代 `CategoryBuyerPage` / `DriverMappingPage` / `SupplierMappingPage`（保留路由重導，避免舊 bookmark 404）
 
 ### Phase 3 — 訂單/出貨流程升級
-1. `confirm_order` action：建立 stock_pickings，從 customer 區域 tag 帶 default_driver
-2. `DeliveryPage` 改查 stock_pickings
-3. 驗證 audit_logs 取代 `x_order_audit_log`、`x_product_product_price_log`
+1. `sale_order_lines` 補 `custom_data` 進 admin/ordering REFS；UI 加行備註欄位（讀寫 `custom_data.note`）
+2. `ProcurementPage` 移除 `db.update('sale_order_lines', ..., {price_unit})`（檔案 `vfs/admin/src/pages/admin/ProcurementPage.tsx:198, 231`），保留 `x_product_product_price_log` 寫入
+3. `confirm_order` action（admin）：建立 stock_pickings + stock_moves，每筆 move 從 `x_product_product_price_log` 取最新 `lst_price` 寫入 `stock_move.price_unit`，並把 `sale_order_lines.custom_data.note` 抄到 `stock_move.custom_data.note`；從 customer 區域 tag 帶 default_driver
+4. `SalesOrdersPage`（單筆 + 批次確認流）改呼叫 `confirm_order` action，原本前端 `db.update(stock_quants)` 扣庫存與 `db.update(sale_orders, {state})` 邏輯移入 action
+5. `DeliveryPage` 改查 stock_pickings
+6. Ordering app 加「銷貨單」tab，REFS 加 `stock_pickings` / `stock_moves`（read）
+7. audit_logs 等待 AI-GO 補索引後再評估取代 `x_product_product_price_log` / `x_order_audit_log`
 
 ### Phase 4 — 系統設定遷移
 1. `SettingsPage` 截止時間改用 `ir_config_parameters`；舊 `x_app_settings` 資料搬遷

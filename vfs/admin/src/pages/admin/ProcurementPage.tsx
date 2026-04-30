@@ -149,10 +149,6 @@ export default function ProcurementPage() {
     }));
   };
 
-  // order_id 可能是 [uuid, name] 或純字串
-  const _oid = (val: any): string => Array.isArray(val) ? String(val[0]) : String(val ?? '');
-
-
   // 取得內部庫位 ID：先從 state 找，找不到就 fresh fetch，再找不到就自動建立
   const _getLocId = async (): Promise<string> => {
     let locId = stockLocations.find((l:any) => l.usage === 'internal')?.id || stockLocations[0]?.id;
@@ -187,17 +183,9 @@ export default function ProcurementPage() {
     setSaving(true);
     const _qid = (v: any) => Array.isArray(v) ? String(v[0]) : String(v || '');
     try {
-      // 寫入價格稽核 log（含當日實際進貨量）
+      // 寫入價格稽核 log（含當日實際進貨量）— 不再回填 sale_order_lines.price_unit
+      // 確認接受訂單時，confirm_order action 會從這個 log 取最新價快照寫入 stock_moves.price_unit
       await db.insertCustom(PRICE_LOG_UUID, { product_product_id: pid, lst_price: item.sellingPrice, standard_price: item.purchasePrice, effective_date: selectedDate, qty_delivered: item.actualQty });
-      // 同步選定日期配送的訂單明細售價（l.product_id 可能是 template UUID，需比對後轉換）
-      const matchingLines = orderLines.filter((l: any) => {
-        const lineRaw = _qid(l.product_id) || _qid(l.product_template_id);
-        return (tmplToPp[lineRaw] || lineRaw) === pid &&
-          typeof l.delivery_date === 'string' && l.delivery_date.slice(0, 10) === selectedDate;
-      });
-      await Promise.all(matchingLines.map((l: any) => db.update('sale_order_lines', l.id, { price_unit: item.sellingPrice })));
-      // 重算受影響訂單的總金額
-      await db.recalcOrderTotal(matchingLines.map((l: any) => _oid(l.order_id)));
       setItems(prev => prev.map(i => i.productId === pid ? {...i, state: 'priced'} : i));
     } catch(e: any) { console.error('定價失敗:', e.message); }
     // 庫存更新獨立 try/catch，不受定價寫入失敗影響
@@ -215,27 +203,16 @@ export default function ProcurementPage() {
     const priceable = items.filter(i => i.sellingPrice > 0);
     if (priceable.length === 0) return;
     setSaving(true);
-    const allAffectedOrderIds: string[] = [];
     const _qid = (v: any) => Array.isArray(v) ? String(v[0]) : String(v || '');
     const locId = await _getLocId();
     for (const item of priceable) {
       try {
-        // 寫入價格稽核 log（含當日實際進貨量）
+        // 寫入價格稽核 log（含當日實際進貨量）— 不再回填 sale_order_lines.price_unit
         await db.insertCustom(PRICE_LOG_UUID, { product_product_id: item.productId, lst_price: item.sellingPrice, standard_price: item.purchasePrice, effective_date: selectedDate, qty_delivered: item.actualQty });
-        // 同步選定日期配送的訂單明細售價（l.product_id 可能是 template UUID）
-        const matchingLines = orderLines.filter((l: any) => {
-          const lineRaw = _qid(l.product_id) || _qid(l.product_template_id);
-          return (tmplToPp[lineRaw] || lineRaw) === item.productId &&
-            typeof l.delivery_date === 'string' && l.delivery_date.slice(0, 10) === selectedDate;
-        });
-        await Promise.all(matchingLines.map((l: any) => db.update('sale_order_lines', l.id, { price_unit: item.sellingPrice })));
-        allAffectedOrderIds.push(...matchingLines.map((l: any) => _oid(l.order_id)));
         if (item.actualQty > 0 && locId) { await _upsertQuant(item.productId, item.actualQty, locId, _qid); }
         setItems(prev => prev.map(i => i.productId === item.productId ? {...i, state: 'priced'} : i));
       } catch(e) { console.error(e); }
     }
-    // 所有品項更新完後，一次重算所有受影響訂單的總金額
-    await db.recalcOrderTotal(allAffectedOrderIds);
     setSaving(false);
   };
 

@@ -1,6 +1,8 @@
 REFS = [
     {"table_name": "sale_orders",        "columns": ["id", "name", "state", "date_order", "customer_id", "note", "amount_total"],                                                                       "permissions": ["read", "create", "update"]},
-    {"table_name": "sale_order_lines",   "columns": ["id", "order_id", "product_id", "product_template_id", "product_uom_qty", "price_unit", "name", "delivery_date"],                                 "permissions": ["read", "create", "update"]},
+    {"table_name": "sale_order_lines",   "columns": ["id", "order_id", "product_id", "product_template_id", "product_uom_qty", "price_unit", "name", "delivery_date", "custom_data"],                  "permissions": ["read", "create", "update"]},
+    {"table_name": "stock_pickings",     "columns": ["id", "name", "state", "scheduled_date", "date_done", "customer_id", "sale_id", "note", "custom_data", "created_at"],                              "permissions": ["read"]},
+    {"table_name": "stock_moves",        "columns": ["id", "name", "product_id", "product_uom_qty", "quantity", "price_unit", "picking_id", "sale_line_id", "custom_data", "created_at"],               "permissions": ["read"]},
     {"table_name": "product_templates",  "columns": ["id", "name", "default_code", "sale_ok", "active", "categ_id", "list_price", "uom_id"],                                                           "permissions": ["read"]},
     {"table_name": "product_categories", "columns": ["id", "name", "parent_id", "active"],                                                                                                             "permissions": ["read"]},
     {"table_name": "product_products",   "columns": ["id", "product_tmpl_id", "active", "custom_data"],                                                                                                "permissions": ["read"]},

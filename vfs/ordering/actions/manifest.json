@@ -11,6 +11,9 @@
   "get_orders": {
     "description": "回傳指定 user_email 的所有訂單（含明細）"
   },
+  "get_pickings": {
+    "description": "回傳指定 user_email 的所有銷貨單 stock_pickings（含 stock_moves 明細，含實送量、出貨單價快照、行備註）"
+  },
   "place_order": {
     "description": "客戶下單：建立銷貨單與明細行"
   },

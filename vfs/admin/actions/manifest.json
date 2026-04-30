@@ -40,5 +40,8 @@
   },
   "recalc_order_total": {
     "description": "批次重算訂單總額：params.order_ids"
+  },
+  "confirm_order": {
+    "description": "確認接受訂單：扣庫存、建立 stock_pickings + stock_moves（含實價快照與行備註抄寫）、更新 sale_orders.state='sale'。params.order_ids[] 或 params.order_id"
   }
 }
