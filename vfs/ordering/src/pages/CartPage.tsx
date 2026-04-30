@@ -13,6 +13,7 @@ interface Props {
   addToCart: (id: string, qty: number, deliveryDate: string) => void;
   setCartExact: (id: string, qty: number, deliveryDate: string) => void;
   clearCartDate: (date: string) => void;
+  setCartItemNote: (productId: string, deliveryDate: string, note: string) => void;
   onNavigate: (p: string) => void;
   setDeliveryDate: (d: string) => void;
   uomMap: Record<string, string>;
@@ -23,13 +24,11 @@ interface Props {
   setProductDefaultNote: (tmplId: string, note: string) => void;
 }
 
-export default function CartPage({ cart, addToCart, setCartExact, clearCartDate, onNavigate, setDeliveryDate, uomMap, user, priceMap, allTemplates, defaultNoteMap, setProductDefaultNote }: Props) {
+export default function CartPage({ cart, addToCart, setCartExact, clearCartDate, setCartItemNote, onNavigate, setDeliveryDate, uomMap, user, priceMap, allTemplates, defaultNoteMap, setProductDefaultNote }: Props) {
   const [groupNotes, setGroupNotes] = useState<Record<string, string>>({});
-  const [itemNotes, setItemNotes] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; error: boolean } | null>(null);
 
-  const setItemNote = (productId: string, note: string) => setItemNotes(prev => ({ ...prev, [productId]: note }));
   const setAsDefault = (productId: string, note: string) => {
     const trimmed = (note || "").trim();
     if (!trimmed) return;
@@ -74,7 +73,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
           product_name: tmplMap[item.productId]?.name ?? "",
           qty: item.qty,
           price_unit: priceMap[item.productId]?.price ?? 0,
-          note: (itemNotes[item.productId] ?? defaultNoteMap[item.productId] ?? "").trim(),
+          note: ((item.note ?? defaultNoteMap[item.productId]) ?? "").trim(),
         })),
       });
       if (result?.error) throw new Error(result.error);
@@ -106,7 +105,7 @@ export default function CartPage({ cart, addToCart, setCartExact, clearCartDate,
           note={groupNotes[date] || ""} onNoteChange={n => setGroupNotes(prev => ({ ...prev, [date]: n }))}
           isSubmitting={submitting === date} onSubmit={() => handleSubmit(date)}
           setDeliveryDate={setDeliveryDate} onNavigate={onNavigate}
-          defaultNoteMap={defaultNoteMap} itemNotes={itemNotes} setItemNote={setItemNote}
+          defaultNoteMap={defaultNoteMap} setItemNote={setCartItemNote}
           setAsDefault={setAsDefault} />
       ))}
     </div>

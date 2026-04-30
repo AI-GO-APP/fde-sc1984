@@ -186,6 +186,11 @@ export default function App() {
   };
 
   const clearCartDate = (date: string) => setCart(prev => prev.filter(i => i.deliveryDate !== date));
+
+  const setCartItemNote = (productId: string, delivDate: string, note: string) => {
+    setCart(prev => prev.map(i => (i.productId === productId && i.deliveryDate === delivDate) ? { ...i, note } : i));
+  };
+
   useEffect(() => { localStorage.setItem(CART_KEY, JSON.stringify(cart)); }, [cart]);
   const cartCount = new Set(cart.map(i => i.deliveryDate)).size;
 
@@ -193,17 +198,17 @@ export default function App() {
   if (INVITE_TOKEN && !user) return <InvitePage token={INVITE_TOKEN} defaultEmail={INVITE_EMAIL} onLogin={handleLogin} />;
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
-  return <AppShell user={user} cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate}
+  return <AppShell user={user} cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} setCartItemNote={setCartItemNote}
     uomMap={uomMap} holidays={holidays} priceMap={priceMap} allTemplates={allTemplates} categories={categories}
     configLoaded={configLoaded} cutoffTime={cutoffTime} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate}
     cartCount={cartCount} currentPath={currentPath} navigate={navigate} onLogout={handleLogout} />;
 }
 
-function AppShell({ user, cart, addToCart, setCartExact, clearCartDate, uomMap, holidays, priceMap, allTemplates, categories, configLoaded, cutoffTime, deliveryDate, setDeliveryDate, cartCount, currentPath, navigate, onLogout }: any) {
+function AppShell({ user, cart, addToCart, setCartExact, clearCartDate, setCartItemNote, uomMap, holidays, priceMap, allTemplates, categories, configLoaded, cutoffTime, deliveryDate, setDeliveryDate, cartCount, currentPath, navigate, onLogout }: any) {
   const { favoriteSet, toggleFavorite, defaultNoteMap, setProductDefaultNote } = useFavorites(user?.id || "");
   const pages: Record<string, React.ReactNode> = {
     "/products": <CatalogPage user={user} cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} setDeliveryDate={setDeliveryDate} holidays={holidays} priceMap={priceMap} allTemplates={allTemplates} categories={categories} configLoaded={configLoaded} favoriteSet={favoriteSet} toggleFavorite={toggleFavorite} />,
-    "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} allTemplates={allTemplates} defaultNoteMap={defaultNoteMap} setProductDefaultNote={setProductDefaultNote} />,
+    "/cart": <CartPage cart={cart} addToCart={addToCart} setCartExact={setCartExact} clearCartDate={clearCartDate} setCartItemNote={setCartItemNote} onNavigate={navigate} setDeliveryDate={setDeliveryDate} uomMap={uomMap} user={user} priceMap={priceMap} allTemplates={allTemplates} defaultNoteMap={defaultNoteMap} setProductDefaultNote={setProductDefaultNote} />,
     "/orders": <OrdersPage user={user} cutoffTime={cutoffTime} defaultNoteMap={defaultNoteMap} setProductDefaultNote={setProductDefaultNote} />,
     "/pickings": <PickingsPage user={user} />,
   };

@@ -20,12 +20,11 @@ interface Props {
   isSubmitting: boolean; onSubmit: () => void;
   setDeliveryDate: (d: string) => void; onNavigate: (p: string) => void;
   defaultNoteMap: Record<string, string>;
-  itemNotes: Record<string, string>;
-  setItemNote: (productId: string, note: string) => void;
+  setItemNote: (productId: string, deliveryDate: string, note: string) => void;
   setAsDefault: (productId: string, note: string) => void;
 }
 
-export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, addToCart, setCartExact, note, onNoteChange, isSubmitting, onSubmit, setDeliveryDate, onNavigate, defaultNoteMap, itemNotes, setItemNote, setAsDefault }: Props) {
+export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, addToCart, setCartExact, note, onNoteChange, isSubmitting, onSubmit, setDeliveryDate, onNavigate, defaultNoteMap, setItemNote, setAsDefault }: Props) {
   const groupTotal = items.reduce((sum, item) => sum + (priceMap[item.productId]?.price ?? 0) * item.qty, 0);
   const hasPrice = items.some(item => !!(priceMap[item.productId]));
   return (
@@ -39,7 +38,7 @@ export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, 
           const tmpl = tmplMap[item.productId];
           const pi = priceMap[item.productId];
           const subtotal = pi ? pi.price * item.qty : null;
-          const effectiveNote = itemNotes[item.productId] ?? defaultNoteMap[item.productId] ?? "";
+          const effectiveNote = (item.note ?? defaultNoteMap[item.productId]) ?? "";
           const hasDefault = !!defaultNoteMap[item.productId];
           const matchesDefault = (defaultNoteMap[item.productId] || "") === effectiveNote.trim() && effectiveNote.trim().length > 0;
           return (
@@ -66,7 +65,7 @@ export default function CartDateGroup({ date, items, priceMap, uomMap, tmplMap, 
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 4 }}>
                 <input type="text" placeholder={hasDefault ? "預設備註：" + defaultNoteMap[item.productId] : "本項備註（選填）"}
-                  value={effectiveNote} onChange={e => setItemNote(item.productId, e.target.value)}
+                  value={effectiveNote} onChange={e => setItemNote(item.productId, date, e.target.value)}
                   style={{ flex: 1, fontSize: 12, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 6, color: "#374151" }} />
                 {effectiveNote.trim() && !matchesDefault && (
                   <button type="button"
