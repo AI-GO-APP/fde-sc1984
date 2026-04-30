@@ -161,7 +161,7 @@ export default function OrdersPage({ user, cutoffTime }: { user: AppUser; cutoff
                     onChange={e => { const v = e.target.value; if (/^\d*\.?\d*$/.test(v)) setEditQtys(prev => ({ ...prev, [l.id]: v as any })); }}
                     onBlur={e => setEditQtys(prev => ({ ...prev, [l.id]: parseFloat(e.target.value) || 0 }))}
                     style={{ width:"64px", padding:"2px 6px", border:"1px solid #d1d5db", borderRadius:"4px", fontSize:"14px", textAlign:"right" }} />
-                ) : (Number(l.product_uom_qty) > 0 ? fmtQty(Number(l.product_uom_qty)) : "—")}</td>
+                ) : (Number(l.product_uom_qty) > 0 ? fmtQty(Number(l.product_uom_qty)) : "—")}
                 <td>{Number(l.price_unit) > 0 ? `$${Number(l.price_unit).toLocaleString()}` : "—"}</td>
               </tr>
             ))}</tbody>

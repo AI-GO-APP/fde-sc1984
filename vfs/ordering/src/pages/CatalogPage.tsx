@@ -1,7 +1,8 @@
 import React from "react";
-import { CartItem, PriceEntry } from "../App";
+import { CartItem, PriceEntry, AppUser } from "../App";
 import { ProductCard, SkeletonCard, Product } from "./CatalogProductCard";
 import { useCatalogData, Category } from "./useCatalogData";
+import { useFavorites } from "./useFavorites";
 
 const DAY_NAMES = ["日","一","二","三","四","五","六"];
 function toYMD(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
@@ -20,6 +21,7 @@ function fmtDateChip(ymd: string): string {
 }
 
 interface Props {
+  user: AppUser;
   cart: CartItem[];
   addToCart: (id: string, qty: number, deliveryDate: string) => void;
   setCartExact: (id: string, qty: number, deliveryDate: string) => void;
@@ -29,8 +31,9 @@ interface Props {
   allTemplates: Product[]; categories: Category[]; configLoaded: boolean;
 }
 
-export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, priceMap, allTemplates, categories, configLoaded }: Props) {
-  const { activeCat, setActiveCat, search, handleSearch, visibleProducts } = useCatalogData(allTemplates, categories);
+export default function CatalogPage({ user, cart, addToCart, setCartExact, uomMap, deliveryDate, setDeliveryDate, holidays, priceMap, allTemplates, categories, configLoaded }: Props) {
+  const { favoriteSet, toggleFavorite } = useFavorites(user.id);
+  const { activeCat, setActiveCat, search, handleSearch, visibleProducts } = useCatalogData(allTemplates, categories, favoriteSet);
   const availableDates = configLoaded ? getAvailableDates(holidays) : [];
 
   return (
@@ -62,7 +65,11 @@ export default function CatalogPage({ cart, addToCart, setCartExact, uomMap, del
           ? Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
           : visibleProducts.length === 0
             ? <p className="empty-msg">{search ? "找不到符合的商品" : "沒有商品"}</p>
-            : visibleProducts.map(p => <ProductCard key={p.id} p={p} cart={cart} addToCart={addToCart} setCartExact={setCartExact} uomMap={uomMap} deliveryDate={deliveryDate} priceMap={priceMap} />)
+            : visibleProducts.map(p => (
+                <ProductCard key={p.id} p={p} cart={cart} addToCart={addToCart} setCartExact={setCartExact}
+                  uomMap={uomMap} deliveryDate={deliveryDate} priceMap={priceMap}
+                  isFavorite={favoriteSet.has(p.id)} onToggleFavorite={toggleFavorite} />
+              ))
         }
       </div>
     </div>
