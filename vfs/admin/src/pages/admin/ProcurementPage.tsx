@@ -280,7 +280,6 @@ export default function ProcurementPage() {
                         <thead><tr className="bg-gray-50 text-gray-500 text-xs">
                           <th className="py-2 px-3 text-left font-medium">品名</th>
                           <th className="py-2 px-3 text-right font-medium w-20">預估量</th>
-                          <th className="py-2 px-3 text-right font-medium w-20">實際量</th>
                           <th className="py-2 px-3 text-right font-medium w-24">成本</th>
                           <th className="py-2 px-3 text-right font-medium w-16">加權</th>
                           <th className="py-2 px-3 text-right font-medium w-20">售價</th>
@@ -306,11 +305,6 @@ export default function ProcurementPage() {
                                   {item.code && <p className="text-xs text-gray-400 font-mono">{item.code}</p>}
                                 </td>
                                 <td className="py-2 px-3 text-right text-gray-400">{fmtQty(item.estimatedQty)}</td>
-                                <td className="py-2 px-3 text-right">
-                                  <input type="number" value={item.actualQty} step="0.5" min="0"
-                                    onChange={e => updateItem(item.productId, 'actualQty', Number(e.target.value))}
-                                    className="w-16 text-right py-1 px-1.5 border border-gray-200 rounded text-sm" />
-                                </td>
                                 <td className="py-2 px-3 text-right">
                                   <input type="number" value={item.purchasePrice || ''} step="0.5" min="0" placeholder="$"
                                     onChange={e => updateItem(item.productId, 'purchasePrice', Number(e.target.value))}
@@ -338,7 +332,7 @@ export default function ProcurementPage() {
                           })}
                         </tbody>
                         <tfoot><tr className="bg-gray-50 font-bold border-t border-gray-200">
-                          <td className="py-2 px-3 text-right" colSpan={7}>小計</td>
+                          <td className="py-2 px-3 text-right" colSpan={6}>小計</td>
                           <td className="py-2 px-3 text-right text-primary">${Math.round(groupTotal).toLocaleString()}</td>
                           <td></td>
                         </tr></tfoot>
