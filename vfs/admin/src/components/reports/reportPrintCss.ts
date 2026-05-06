@@ -1,0 +1,17 @@
+export const REPORT_PRINT_CSS = `
+.report-sheet { page-break-after: always; }
+.report-sheet:last-child { page-break-after: auto; }
+.report-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1.5pt solid #000; padding-bottom: 6pt; margin-bottom: 8pt; font-size: 12pt; font-weight: bold; }
+.report-header .meta { font-size: 10pt; font-weight: normal; }
+.report-title { font-size: 14pt; }
+.report-columns { column-count: 2; column-gap: 8mm; column-rule: 0.5pt solid #ccc; font-size: 10pt; }
+.report-product-block { break-inside: avoid; margin-bottom: 4pt; }
+.report-product-block + .report-product-block { border-top: 0.5pt dashed #999; padding-top: 3pt; }
+.report-product-name { font-weight: bold; font-size: 10pt; margin-bottom: 2pt; }
+.report-row { display: grid; grid-template-columns: 4em 1fr 4em 4em 1fr; gap: 4pt; padding: 1pt 0; break-inside: avoid; }
+.report-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.report-row .note { color: #444; font-size: 9pt; }
+.picking-row { display: grid; grid-template-columns: 5em 1fr 4em 4em; gap: 4pt; padding: 1pt 0; break-inside: avoid; }
+.picking-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.report-warning { font-size: 9pt; color: #b45309; background: #fef3c7; padding: 2pt 4pt; border-radius: 2pt; display: inline-block; }
+`;
