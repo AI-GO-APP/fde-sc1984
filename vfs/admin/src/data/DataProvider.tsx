@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import * as db from '../db';
 
@@ -52,6 +52,7 @@ export default function DataProvider({ children }: { children: ReactNode }) {
   const today = new Date().toISOString().slice(0, 10);
   const [selectedDate, setSelectedDateState] = useState(() => searchParams.get('date') || today);
 
+  const location = useLocation();
   const lastFetch = useRef(0);
   const fetching = useRef(false);
 
@@ -113,6 +114,7 @@ export default function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { refresh(true); }, [refresh]);
+  useEffect(() => { refresh(true); }, [location.pathname]);
 
   const setSelectedDate = useCallback((d: string) => {
     setSelectedDateState(d);

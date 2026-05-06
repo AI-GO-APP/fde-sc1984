@@ -161,6 +161,8 @@ def execute(ctx):
                 }
                 m = ctx.db.insert("stock_moves", move_payload) or {}
                 move_results.append({"line_id": l.get("id"), "move_id": m.get("id") or m.get("data", {}).get("id"), "price_unit": price})
+                if lp:
+                    ctx.db.update("sale_order_lines", l["id"], {"price_unit": price})
 
             ctx.db.update("sale_orders", oid, {"state": "sale"})
             results.append({"order_id": oid, "picking_id": picking_id, "moves": move_results})
