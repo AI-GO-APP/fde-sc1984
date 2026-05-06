@@ -72,6 +72,80 @@ export function lineUom(
   return uomMap[uomId] || '';
 }
 
+export function buildPurchaseSheets(input: ReportInput): PurchaseSheet[] {
+  const { orders, orderLines, customers, customerTags, products, suppliers, uomMap, selectedDate } = input;
+
+  // index helpers
+  const productsById: Record<string, any> = {};
+  const productSupplier: Record<string, string> = {};   // tmplId → supplierId
+  for (const p of products) {
+    productsById[p.id] = p;
+    const s = _id(p?.custom_data?.default_supplier_id);
+    if (s) productSupplier[p.id] = s;
+  }
+  const tagsById: Record<string, any> = {};
+  for (const t of customerTags) tagsById[t.id] = t;
+
+  // 篩當日訂單 line（用 delivery_date + 屬於 orders 集合）
+  const orderIds = new Set(orders.map(o => String(o.id)));
+  const todaysLines = orderLines.filter(l =>
+    orderIds.has(_id(l.order_id)) &&
+    String(l.delivery_date || '').slice(0, 10) === selectedDate
+  );
+
+  // 分組 supplier → product → customer
+  type Bucket = Map<string, { name: string; uom: string; rows: PurchaseRow[] }>;
+  const grouped = new Map<string, Bucket>();   // supplierKey → product bucket
+
+  for (const l of todaysLines) {
+    const tmplId = _id(l.product_template_id || l.product_id);
+    const supKey = productSupplier[tmplId] || '__none__';
+    if (!grouped.has(supKey)) grouped.set(supKey, new Map());
+    const bucket = grouped.get(supKey)!;
+    const pname = String(l.name || '—');
+    const productKey = `${tmplId}|${pname}`;       // 用 tmplId+name 當 key 避免同名不同品項合併
+    if (!bucket.has(productKey)) {
+      bucket.set(productKey, {
+        name: pname,
+        uom: lineUom(l, productsById, uomMap),
+        rows: [],
+      });
+    }
+    const block = bucket.get(productKey)!;
+    const orderForLine = orders.find(o => String(o.id) === _id(l.order_id));
+    const cust = orderForLine ? customers[_id(orderForLine.customer_id)] : undefined;
+    block.rows.push({
+      customerCode: customerCode(cust, tagsById),
+      qty: Number(l.product_uom_qty || 0),
+      uom: lineUom(l, productsById, uomMap),
+      note: lineNote(l),
+    });
+  }
+
+  // 排序：supplier 名稱（none 殿後）；品項中文；客戶代號
+  const sheets: PurchaseSheet[] = Array.from(grouped.entries()).map(([supKey, bucket]) => {
+    const products = Array.from(bucket.values())
+      .map(b => ({
+        productName: b.name,
+        uom: b.uom,
+        rows: [...b.rows].sort((a, b) => a.customerCode.localeCompare(b.customerCode, 'zh-Hant')),
+      }))
+      .sort((a, b) => a.productName.localeCompare(b.productName, 'zh-Hant'));
+    return {
+      supplierId: supKey,
+      supplierName: supKey === '__none__' ? '未設定供應商' : (suppliers[supKey]?.name || supKey),
+      products,
+    };
+  });
+
+  sheets.sort((a, b) => {
+    if (a.supplierId === '__none__') return 1;
+    if (b.supplierId === '__none__') return -1;
+    return a.supplierName.localeCompare(b.supplierName, 'zh-Hant');
+  });
+
+  return sheets;
+}
+
 // 後續 task 補：
-export function buildPurchaseSheets(_input: ReportInput): PurchaseSheet[] { return []; }
 export function buildPickingSheets(_input: ReportInput): PickingSheet[] { return []; }
