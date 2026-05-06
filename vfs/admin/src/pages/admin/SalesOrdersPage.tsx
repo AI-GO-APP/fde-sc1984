@@ -28,6 +28,7 @@ export default function SalesOrdersPage() {
   const [confirm,setConfirm]=useState<{id:string;action:string}|null>(null);
   const [editingLine,setEditingLine]=useState<string|null>(null);
   const [editingNote,setEditingNote]=useState<string|null>(null);
+  const [confirmingOrder,setConfirmingOrder]=useState<string|null>(null);
 
   // 同步 allOrders 到本地 state
   useEffect(() => {
@@ -101,6 +102,22 @@ export default function SalesOrdersPage() {
     } catch(e:any) { console.error('更新失敗:', e.message); }
   };
 
+  const confirmOrder = async (oid: string) => {
+    setConfirmingOrder(oid);
+    try {
+      const r = await db.runAction('confirm_order', { order_ids: [oid] });
+      const detail = r?.data || r;
+      if ((detail?.errors || 0) > 0) {
+        const msg = (detail.error_details || []).map((e:any) => `${e.order_id}: ${e.error}`).join('\n');
+        alert(`產銷貨單失敗：\n${msg}`);
+        return;
+      }
+      setOrders(prev => prev.map(o => o.id === oid ? {...o, state: 'sale'} : o));
+      await refresh();
+    } catch(e:any) { alert(`產銷貨單失敗：${e.message}`); }
+    finally { setConfirmingOrder(null); }
+  };
+
   const updateLineNote = async (lineId: string, note: string) => {
     try {
       const cur = lines.find(l => l.id === lineId);
@@ -123,7 +140,7 @@ export default function SalesOrdersPage() {
   const batchAction = async (action: string) => {
     const targetOrders = orders.filter(o => selectedOrders.has(o.id));
     if (action === 'sale') {
-      const draftIds = targetOrders.filter(o => !o.state || o.state === 'draft').map(o => o.id);
+      const draftIds = targetOrders.filter(o => o.state === 'sent').map(o => o.id);
       if (draftIds.length === 0) { setSelectedOrders(new Set()); return; }
       try {
         const r = await db.runAction('confirm_order', { order_ids: draftIds });
@@ -167,7 +184,7 @@ export default function SalesOrdersPage() {
     return true;
   });
   const co = confirm ? orders.find(o => o.id===confirm.id) : null;
-  const draftSelected = [...selectedOrders].filter(id => { const o = orders.find(x => x.id===id); return o ? isDraft(o) : false; }).length;
+  const draftSelected = [...selectedOrders].filter(id => { const o = orders.find(x => x.id===id); return o ? o.state === 'sent' : false; }).length;
 
   return (
     <div style={{height:'100vh',display:'flex',flexDirection:'column',overflow:'hidden',background:'#f9fafb'}}>
@@ -220,7 +237,10 @@ export default function SalesOrdersPage() {
                 <p className="text-sm text-gray-400">{cust?.name||'—'} · {o.date_order?new Date(o.date_order).toLocaleDateString('zh-TW'):'—'}</p></div>
               </div>
               <div className="flex items-center gap-2">
-                {(isDraft(o) || o.state === 'sent') && (<>
+                {isDraft(o) && (
+                  <button onClick={e=>{e.stopPropagation();setConfirm({id:o.id,action:'cancel'});}} className="px-3 py-1.5 bg-gray-100 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">取消</button>
+                )}
+                {o.state === 'sent' && (<>
                   <button onClick={e=>{e.stopPropagation();setConfirm({id:o.id,action:'sale'});}} className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-green-700 transition-colors">確認</button>
                   <button onClick={e=>{e.stopPropagation();setConfirm({id:o.id,action:'cancel'});}} className="px-3 py-1.5 bg-gray-100 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors">取消</button>
                 </>)}
@@ -231,6 +251,7 @@ export default function SalesOrdersPage() {
             </div>
             {exp && <div className="border-t border-gray-200 px-4 py-3">
               {ol.length===0?<p className="text-sm text-gray-400">無明細行</p>:(
+                <>
                 <table className="w-full text-sm"><thead><tr className="text-gray-400 text-xs border-b border-gray-100">
                   <th className="py-2 text-left">品名</th><th className="py-2 text-right">需求量</th><th className="py-2 text-right">配貨量</th><th className="py-2 text-right">單價</th><th className="py-2 text-right">金額</th><th className="py-2 text-left">備註</th>
                 </tr></thead><tbody>{ol.map(l => {
@@ -265,6 +286,15 @@ export default function SalesOrdersPage() {
                     </td>
                   </tr>);
                 })}</tbody></table>
+                {isDraft(o) && (
+                  <div className="mt-3 flex justify-end">
+                    <button onClick={()=>confirmOrder(o.id)} disabled={confirmingOrder===o.id}
+                      className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                      {confirmingOrder===o.id ? '產銷貨單中...' : '產銷貨單'}
+                    </button>
+                  </div>
+                )}
+                </>
               )}
             </div>}
           </div>);
