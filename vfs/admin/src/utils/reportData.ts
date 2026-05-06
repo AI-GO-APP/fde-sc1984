@@ -147,5 +147,48 @@ export function buildPurchaseSheets(input: ReportInput): PurchaseSheet[] {
   return sheets;
 }
 
-// 後續 task 補：
-export function buildPickingSheets(_input: ReportInput): PickingSheet[] { return []; }
+export function buildPickingSheets(input: ReportInput): PickingSheet[] {
+  const { orders, orderLines, customers, customerTags, products, uomMap, selectedDate } = input;
+
+  const productsById: Record<string, any> = {};
+  for (const p of products) productsById[p.id] = p;
+  const tagsById: Record<string, any> = {};
+  for (const t of customerTags) tagsById[t.id] = t;
+
+  const orderIdToCust: Record<string, string> = {};
+  for (const o of orders) orderIdToCust[String(o.id)] = _id(o.customer_id);
+
+  const todaysLines = orderLines.filter(l =>
+    !!orderIdToCust[_id(l.order_id)] &&
+    String(l.delivery_date || '').slice(0, 10) === selectedDate
+  );
+
+  // 分組 customer → rows
+  const grouped = new Map<string, PickingRow[]>();
+  for (const l of todaysLines) {
+    const cid = orderIdToCust[_id(l.order_id)];
+    if (!cid) continue;
+    if (!grouped.has(cid)) grouped.set(cid, []);
+    grouped.get(cid)!.push({
+      productName: String(l.name || '—'),
+      qty: Number(l.product_uom_qty || 0),
+      uom: lineUom(l, productsById, uomMap),
+      note: lineNote(l),
+    });
+  }
+
+  const sheets: PickingSheet[] = Array.from(grouped.entries())
+    .map(([cid, rows]) => {
+      const cust = customers[cid];
+      return {
+        customerId: cid,
+        customerCode: customerCode(cust, tagsById),
+        customerFullName: String(cust?.name || cust?.short_name || ''),
+        lines: rows.sort((a, b) => a.productName.localeCompare(b.productName, 'zh-Hant')),
+      };
+    })
+    .filter(s => s.lines.length > 0)
+    .sort((a, b) => a.customerCode.localeCompare(b.customerCode, 'zh-Hant'));
+
+  return sheets;
+}

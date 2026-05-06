@@ -2,7 +2,7 @@
 // 用法：在瀏覽器 devtools 執行 import('./utils/reportData.selftest')
 //      或在實作期間 main.tsx 暫時 import 一次跑完看 console。
 
-import { buildPurchaseSheets, customerCode, lineNote, lineUom } from './reportData';
+import { buildPurchaseSheets, buildPickingSheets, customerCode, lineNote, lineUom } from './reportData';
 
 function assert(cond: any, msg: string) {
   if (!cond) { console.error('❌', msg); throw new Error(msg); }
@@ -74,6 +74,18 @@ export function runReportDataSelfTest() {
   const none = sheets[1];
   assert(none.supplierName === '未設定供應商', '__none__ 顯示名');
   assert(none.products[0].rows[0].customerCode === 'F60梵', '__none__ 也用客戶代號');
+
+  // ── buildPickingSheets ──
+  const picks = buildPickingSheets(fixture);
+  assert(picks.length === 2, 'buildPickingSheets 兩個客戶');
+  assert(picks[0].customerCode === 'F33炸料', '客戶按代號排序');
+  assert(picks[1].customerCode === 'F60梵',   '第二個客戶');
+  assert(picks[0].lines.length === 2, '炸料兩個品項');
+  assert(picks[0].lines[0].productName === '巴西里', '客戶內品項中文排序');
+  assert(picks[0].lines[1].productName === '綠節瓜', '客戶內品項排序');
+  assert(picks[1].lines.length === 2, '梵兩個品項（綠節瓜+無供應商品）');
+  assert(picks[0].lines[1].qty === 1.0 && picks[0].lines[1].uom === '台斤', '炸料的綠節瓜數量+單位');
+  assert(picks[0].customerFullName === fixture.customers.c1.short_name || picks[0].customerFullName === '炸料', '存 customerFullName');
 
   console.log('🎉 reportData helpers self-test passed');
 }
